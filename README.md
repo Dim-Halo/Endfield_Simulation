@@ -12,5 +12,5 @@
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/sxa93667-web/endfield_sim.git
+   git clone https://github.com/Dim-Halo/endfield_sim.git
    cd endfield_sim
