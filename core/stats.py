@@ -1,0 +1,95 @@
+# core/stats.py
+from dataclasses import dataclass, field
+from .enums import StatType
+
+@dataclass
+class Attributes:
+    strength: int = 0
+    agility: int = 0
+    intelligence: int = 0
+    willpower: int = 0
+
+@dataclass
+class CombatStats:
+    # --- 1. 基础区 ---
+    base_hp: float = 0      # 基础生命
+    base_def: float = 0     # 基础防御
+
+    base_atk: float = 0
+    weapon_atk: float = 0
+
+    atk_pct: float = 0.0      # 攻击力%
+    flat_atk: float = 0.0     # 固定攻击力
+    
+    # --- 2. 增伤区 (Damage Bonus) ---
+    # 全区增伤
+    dmg_bonus: float = 0.0
+
+    # 特定招式增伤
+    normal_dmg_bonus: float = 0.0 # 普攻增伤
+    skill_dmg_bonus: float = 0.0  # 战技增伤
+    ult_dmg_bonus: float = 0.0    # 大招增伤
+    qte_dmg_bonus: float = 0.0    # 连携技增伤
+
+    # 特定元素增伤
+    heat_dmg_bonus: float = 0.0
+    electric_dmg_bonus: float = 0.0
+    frost_dmg_bonus: float = 0.0
+    nature_dmg_bonus: float = 0.0
+    physical_dmg_bonus: float = 0.0
+    
+    # --- 3. 暴击区 (Critical) ---
+    crit_rate: float = 0.05
+    crit_dmg: float = 0.50
+    
+    # --- 4. 穿透区 (Penetration) ---
+    res_pen: float = 0.0      # 抗性穿透
+    
+    # --- 5. 增幅区 (Amplification - 独立乘区) ---
+    # 极少见的乘区，通常来自特殊大招或核心被动
+    amplification: float = 0.0
+
+    # 治疗加成
+    heal_bonus: float = 0.0
+
+    def get_attr_multiplier(self, attrs: Attributes, main_attr: str, sub_attr: str):
+        """仅计算属性转化系数 (独立乘区)"""
+        main_val = getattr(attrs, main_attr)
+        sub_val = getattr(attrs, sub_attr)
+        # 公式：1 + 主*0.5% + 副*0.2%
+        return 1.0 + (main_val * 0.005) + (sub_val * 0.002)
+    
+    def calculate_max_hp(self, attrs: Attributes):
+        """
+        计算最大生命值
+        公式: 基础生命 + 力量 * 5
+        """
+        return self.base_hp + (attrs.strength * 5)
+
+    def calculate_phys_res(self, attrs: Attributes):
+        """
+        计算物理抗性 (敏捷衍生)
+        公式: 敏捷/10, 四舍五入 (作为百分比)
+        例如: 95敏捷 -> 9.5 -> 10 -> 10% -> 0.10
+        """
+        # Python的round是银行家舍入(偶数舍入)，为了符合游戏常识实现四舍五入
+        val = attrs.agility / 10.0
+        rounded_val = int(val + 0.5) 
+        return rounded_val / 100.0
+
+    def calculate_magic_res(self, attrs: Attributes):
+        """
+        计算法术抗性 (智识衍生)
+        公式: 智识/10, 四舍五入 (作为百分比)
+        """
+        val = attrs.intelligence / 10.0
+        rounded_val = int(val + 0.5)
+        return rounded_val / 100.0
+
+    def calculate_healing_received(self, attrs: Attributes):
+        """
+        计算受治疗效率 (意志衍生)
+        公式: (意志/10)%
+        例如: 35意志 -> 3.5% -> 0.035
+        """
+        return (attrs.willpower / 10.0) / 100.0
