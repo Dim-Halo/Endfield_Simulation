@@ -24,7 +24,8 @@ FRAME_DATA = {
         {"total": 8, "hit": 5}, {"total": 13, "hit": 9}
     ],
     "skill": {"total": 15, "hit_init": 5, "hit_burst": 10},
-    "ult": {"total": 20, "hit": 10}
+    "ult": {"total": 20, "hit": 10},
+    "qte": {"total": 12, "hit": 5}
 }
 
 MECHANICS = {

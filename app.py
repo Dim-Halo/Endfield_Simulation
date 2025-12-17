@@ -23,35 +23,97 @@ from core.enums import BuffCategory, BuffEffect, ReactionType
 # 1. 样式与辅助函数
 # ==========================================
 def categorize_buff(buff):
-    """根据Buff类型分类"""
-    # 检查buff名称（最直接的方式）
-    name = buff.name
-    if "脆弱" in name: return "🛡️ 脆弱"
-    if "易伤" in name or name in ["导电", "碎甲"]: return "💔 易伤"
-    if "增伤" in name or "伤害" in name: return "⚔️ 增伤"
-    if "攻击" in name: return "💪 攻击"
+    """
+    根据Buff类型和stat_modifiers精确分类到伤害乘区
 
-    # 检查effect_type
+    对应14个伤害乘区：
+    1. 基础伤害区 → 2. 暴击区 → 3. 伤害加成区 → 4. 伤害减免区 →
+    5. 易伤区 → 6. 增幅区 → 7. 庇护区 → 8. 脆弱区 → 9. 防御区 →
+    10. 失衡易伤区 → 11. 减伤区 → 12. 抗性区 → 13. 非主控减伤区 → 14. 特殊加成区
+    """
+    # 1. 特殊处理：腐蚀归类到抗性区
+    if hasattr(buff, 'tags') and ReactionType.CORROSION in buff.tags:
+        return "🌐 抗性区"
+
+    # 2. 检查effect_type - DOT和CC优先识别
     if hasattr(buff, 'effect_type'):
-        if buff.effect_type == BuffEffect.DOT: return "🔥 状态"
-        if buff.effect_type == BuffEffect.CC: return "🔥 状态"
+        if buff.effect_type == BuffEffect.DOT:
+            return "🔥 DOT伤害"
+        if buff.effect_type == BuffEffect.CC:
+            return "❄️ 控制"
 
-    # 检查特殊tags
+    # 3. 检查特殊tags（元素反应）
     if hasattr(buff, 'tags'):
         for tag in buff.tags:
-            if tag in [ReactionType.BURNING, ReactionType.FROZEN, ReactionType.CORROSION]:
-                return "🔥 状态"
+            if tag in [ReactionType.BURNING, ReactionType.FROZEN]:
+                return "🔥 元素反应"
             if tag == "focus":
-                return "🔥 状态"
+                return "🎯 标记"
+
+    # 4. 检查stat_modifiers（对于StatModifierBuff及其子类）
+    if hasattr(buff, 'stat_modifiers'):
+        modifiers = buff.stat_modifiers
+
+        # 攻击区 (基础伤害)
+        if "atk_pct" in modifiers:
+            return "💪 攻击区"
+
+        # 脆弱区 (第8位)
+        if any("fragility" in key for key in modifiers):
+            return "🛡️ 脆弱区"
+
+        # 易伤区 (第5位)
+        if any("vulnerability" in key for key in modifiers):
+            return "💔 易伤区"
+
+        # 伤害加成区 (第3位) - dmg_bonus, 元素增伤, 招式增伤
+        if any(key in modifiers for key in ["dmg_bonus", "heat_dmg_bonus", "electric_dmg_bonus",
+                                             "frost_dmg_bonus", "nature_dmg_bonus", "physical_dmg_bonus",
+                                             "normal_dmg_bonus", "skill_dmg_bonus", "ult_dmg_bonus", "qte_dmg_bonus"]):
+            return "⚔️ 伤害加成区"
+
+        # 增幅区 (第6位)
+        if "amplification" in modifiers:
+            return "📈 增幅区"
+
+        # 抗性区 (第12位) - 通过检查是否有_res结尾的键
+        if any(key.endswith("_res") for key in modifiers):
+            return "🌐 抗性区"
+
+    # 5. 根据buff名称fallback判断
+    name = buff.name
+    if "攻击" in name:
+        return "💪 攻击区"
+    if "脆弱" in name:
+        return "🛡️ 脆弱区"
+    if "易伤" in name or name in ["导电", "碎甲"]:
+        return "💔 易伤区"
+    if "增伤" in name or "伤害" in name:
+        return "⚔️ 伤害加成区"
+    if "腐蚀" in name:
+        return "🌐 抗性区"
 
     return "📦 其他"
 
 def get_buff_style(category):
+    """返回不同buff分类的颜色"""
     colors = {
-        "🛡️ 脆弱": "#ff4b4b", "💔 易伤": "#ffa500", "⚔️ 增伤": "#0984e3",
-        "💪 攻击": "#00b894", "🔥 状态": "#6c5ce7", "📦 其他": "#636e72"
+        # 核心伤害乘区
+        "💪 攻击区": "#00b894",        # 绿色 - 基础伤害
+        "⚔️ 伤害加成区": "#0984e3",    # 蓝色 - 增伤
+        "💔 易伤区": "#ffa500",        # 橙色 - 易伤
+        "🛡️ 脆弱区": "#ff4b4b",        # 红色 - 脆弱
+        "📈 增幅区": "#6c5ce7",        # 紫色 - 增幅
+        "🌐 抗性区": "#fd79a8",        # 粉色 - 抗性削减
+
+        # 特殊状态
+        "🔥 DOT伤害": "#d63031",       # 深红 - 持续伤害
+        "🔥 元素反应": "#e17055",      # 橙红 - 反应
+        "❄️ 控制": "#74b9ff",          # 浅蓝 - 控制
+        "🎯 标记": "#fdcb6e",          # 黄色 - 标记
+        "📦 其他": "#636e72"           # 灰色 - 其他
     }
-    return colors.get(category, "gray")
+    return colors.get(category, "#636e72")
 
 def parse_script_input(text):
     return [line.strip() for line in text.split('\n') if line.strip()]
@@ -291,37 +353,43 @@ if 'data' in st.session_state:
             frame = history[f_idx]
             
             # -------------------------------------------------
-            # 【核心逻辑重写】：按乘区分类收集 Buff 名称
+            # 【核心逻辑重写】：按伤害乘区分类收集 Buff 名称
             # -------------------------------------------------
-            # 1. 初始化四个乘区的列表
+            # 1. 初始化6个主要乘区的列表（按伤害计算流程排序）
             buff_columns = {
-                "📉 易伤/减防": [],
-                "⚔️ 攻击区": [],
-                "🔥 增伤区": [],
-                "📦 其他/状态": []
+                "💪 攻击/暴击": [],        # 第1-2位：基础伤害区、暴击区
+                "⚔️ 伤害加成": [],         # 第3位：伤害加成区
+                "💔 易伤/脆弱": [],        # 第5+8位：易伤区、脆弱区
+                "📈 增幅/抗性": [],        # 第6+12位：增幅区、抗性区
+                "🔥 DOT/反应": [],         # 元素反应、持续伤害
+                "🎯 标记/其他": []         # 其他状态
             }
-            
+
             # 2. 遍历所有人，收集 Buff
             for name, entity_data in frame['entities'].items():
                 if not entity_data['buffs']: continue
-                
+
                 for b in entity_data['buffs']:
-                    # 确定放入哪一列
+                    # 确定放入哪一列（根据category映射到合并后的列）
                     raw_cat = b['category']
-                    target_col = "📦 其他/状态" # 默认
-                    
-                    if "易伤" in raw_cat or "脆弱" in raw_cat:
-                        target_col = "📉 易伤/减防"
-                    elif "攻击" in raw_cat:
-                        target_col = "⚔️ 攻击区"
-                    elif "增伤" in raw_cat:
-                        target_col = "🔥 增伤区"
-                    
+                    target_col = "🎯 标记/其他"  # 默认
+
+                    if raw_cat in ["💪 攻击区"]:
+                        target_col = "💪 攻击/暴击"
+                    elif raw_cat in ["⚔️ 伤害加成区"]:
+                        target_col = "⚔️ 伤害加成"
+                    elif raw_cat in ["💔 易伤区", "🛡️ 脆弱区"]:
+                        target_col = "💔 易伤/脆弱"
+                    elif raw_cat in ["📈 增幅区", "🌐 抗性区"]:
+                        target_col = "📈 增幅/抗性"
+                    elif raw_cat in ["🔥 DOT伤害", "🔥 元素反应", "❄️ 控制"]:
+                        target_col = "🔥 DOT/反应"
+
                     # 拼接名称与层数 (格式: 名称 *层数)
                     display_name = b['name']
                     if b['stacks'] > 1:
-                        display_name += f" *{b['stacks']}"
-                    
+                        display_name += f" ×{b['stacks']}"
+
                     buff_columns[target_col].append(display_name)
             
             # -------------------------------------------------
@@ -343,15 +411,15 @@ if 'data' in st.session_state:
                 # 如果最大长度为0，说明没有任何Buff
                 if max_len > 0:
                     df_buffs = pd.DataFrame(buff_columns)
-                    st.markdown("##### 📊 实时乘区监控")
+                    st.markdown("##### 📊 伤害乘区监控（按14乘区分类）")
                     st.dataframe(
-                        df_buffs, 
-                        hide_index=True, 
+                        df_buffs,
+                        hide_index=True,
                         use_container_width=True,
-                        height=200 
+                        height=200
                     )
                 else:
-                    st.markdown("##### 📊 实时乘区监控")
+                    st.markdown("##### 📊 伤害乘区监控（按14乘区分类）")
                     st.info("当前场上无生效 Buff")
 
             # -------------------------------------------------
