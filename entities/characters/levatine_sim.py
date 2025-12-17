@@ -1,27 +1,38 @@
-# entities/levatine_sim.py
+# entities/characters/levatine_sim.py
 from .base_actor import BaseActor
 from simulation.action import Action, DamageEvent
 from core.calculator import DamageEngine
 from core.stats import CombatStats, Attributes
-from core.enums import Element, MoveType
-from mechanics.buff_system import BurningBuff, Buff
+from core.enums import Element, MoveType, ReactionType, BuffCategory
+from mechanics.buff_system import Buff, BurningBuff
 from .levatine_constants import SKILL_MULTIPLIERS, FRAME_DATA, MECHANICS
 
 class HeatInflict(Buff):
+    """莱瓦汀天赋：灼热附着 - 标记目标"""
     def __init__(self):
-        super().__init__("灼热附着", duration_sec=20.0, tags=["heat_inflict"])
+        super().__init__("灼热附着", duration_sec=20.0, category=BuffCategory.NEUTRAL)
+        self.tags.append("heat_inflict")  # 添加自定义标签
+
 
 class LevatineSim(BaseActor):
+    # ===== 初始化 =====
     def __init__(self, engine, target):
         super().__init__("莱瓦汀", engine)
         self.target = target
-        
+
+        # 角色属性
         self.attrs = Attributes(strength=121, agility=99, intelligence=197, willpower=89)
-        self.base_stats = CombatStats(base_hp = 5495, base_atk=318)
-        
+        self.base_stats = CombatStats(base_hp=5495, base_atk=318)
+
+        # 主副属性
+        self.main_attr = "intelligence"
+        self.sub_attr = "strength"
+
+        # 机制状态
         self.molten_stacks = 0
         self.ult_duration_ticks = 0
 
+    # ===== 状态管理 =====
     def on_tick(self, engine):
         if self.ult_duration_ticks > 0:
             self.ult_duration_ticks -= 1
@@ -33,64 +44,81 @@ class LevatineSim(BaseActor):
     def is_ult_active(self):
         return self.ult_duration_ticks > 0
 
-    def get_current_panel(self):
-        # 1. 暴露基础数据
-        stats = {
-            "base_atk": self.base_stats.base_atk + self.base_stats.weapon_atk,
-            "atk_pct": self.base_stats.atk_pct,
-            "flat_atk": self.base_stats.flat_atk,
-            
-            "dmg_bonus": self.base_stats.dmg_bonus,
-            "crit_rate": self.base_stats.crit_rate,
-            "crit_dmg": self.base_stats.crit_dmg,
-            "res_pen": self.base_stats.res_pen,
-            "amplification": self.base_stats.amplification,
-            
-            # 特定增伤
-            "normal_dmg_bonus": self.base_stats.normal_dmg_bonus,
-            "skill_dmg_bonus": self.base_stats.skill_dmg_bonus,
-            "ult_dmg_bonus": self.base_stats.ult_dmg_bonus,
-            "qte_dmg_bonus": self.base_stats.qte_dmg_bonus,
-        }
-        
-        # 2. 莱瓦汀天赋 (熔火层数加穿透)
+    def _modify_panel_before_buffs(self, stats):
         if self.molten_stacks >= 4:
             stats['res_pen'] += MECHANICS['heat_res_shred']
 
-        # 3. 应用 Buff (允许修改 atk_pct)
-        stats = self.buffs.apply_stats(stats)
-        
-        # 4. 计算 Final ATK
-        base_zone = stats["base_atk"] * (1 + stats["atk_pct"]) + stats["flat_atk"]
-        attr_mult = self.base_stats.get_attr_multiplier(self.attrs, "intelligence", "strength")
-        stats["final_atk"] = base_zone * attr_mult
-        
-        return stats
-
-    # --- 辅助：统一伤害处理 ---
-    def _deal_dmg_and_react(self, mv, move_type, apply_heat=True):
+    # ===== 伤害计算 =====
+    def _deal_damage(self, mv, move_type, apply_element=True):
+        """统一伤害计算方法"""
         panel = self.get_current_panel()
         extra_mv = 0
-        
-        # 元素反应判定
-        if apply_heat:
-            ex_mv, r_type, log = self.target.reaction_mgr.apply_hit(
-                Element.HEAT, attacker_atk=panel['final_atk']
+        is_reaction = False
+
+        if apply_element:
+            res = self.target.reaction_mgr.apply_hit(
+                Element.HEAT,
+                attacker_atk=panel['final_atk'],
+                attacker_tech=panel['technique_power'],
+                attacker_lvl=panel['level'],
+                attacker_name=self.name
             )
-            extra_mv = ex_mv
-            if log: self.engine.log(f"   [{log}]")
+            extra_mv = res.extra_mv
+            is_reaction = extra_mv > 0
+            if res.log_msg:
+                self.engine.log(f"   [{res.log_msg}]")
 
-        # 1. 计算
-        dmg = DamageEngine.calculate(
-            panel, self.target.get_defense_stats(), 
-            mv + extra_mv, Element.HEAT, move_type=move_type
+        # 分别计算基础伤害和反应伤害
+        base_dmg = DamageEngine.calculate(
+            panel, self.target.get_defense_stats(),
+            mv, Element.HEAT, move_type=move_type
         )
-        
-        # 2. 应用伤害
-        self.target.take_damage(dmg)
-        self.engine.log(f"   💥 Hit造成伤害: {dmg}")
 
-    # --- 解析器 ---
+        reaction_dmg = 0
+        if extra_mv > 0:
+            reaction_dmg = DamageEngine.calculate(
+                panel, self.target.get_defense_stats(),
+                extra_mv, Element.HEAT, move_type=move_type
+            )
+
+        total_dmg = base_dmg + reaction_dmg
+        self.target.take_damage(total_dmg)
+        self.engine.log(f"   [伤害] Hit造成伤害: {total_dmg}")
+
+        # 记录到统计系统
+        if hasattr(self.engine, 'statistics'):
+            import random
+            crit_rate = panel.get('crit_rate', 0.0)
+            is_crit = random.random() < crit_rate
+
+            # 记录基础技能伤害
+            self.engine.statistics.record_damage(
+                tick=self.engine.tick,
+                source=self.name,
+                target=self.target.name,
+                skill_name=self.current_action.name if self.current_action else "未知技能",
+                damage=base_dmg,
+                element=Element.HEAT,
+                move_type=move_type,
+                is_crit=is_crit,
+                is_reaction=False
+            )
+
+            # 如果有反应伤害，单独记录
+            if reaction_dmg > 0:
+                self.engine.statistics.record_damage(
+                    tick=self.engine.tick,
+                    source=self.name,
+                    target=self.target.name,
+                    skill_name="元素反应",
+                    damage=reaction_dmg,
+                    element=Element.HEAT,
+                    move_type=MoveType.OTHER,
+                    is_crit=False,
+                    is_reaction=True
+                )
+
+    # ===== 命令解析 =====
     def parse_command(self, cmd_str: str):
         parts = cmd_str.split()
         cmd = parts[0].lower()
@@ -112,7 +140,7 @@ class LevatineSim(BaseActor):
 
         return Action("未知", 0, [])
 
-    # --- 动作工厂 ---
+    # ===== 技能工厂 =====
     def create_normal_attack(self, seq_index):
         key = "enhanced_normal" if self.is_ult_active else "normal"
         mvs = SKILL_MULTIPLIERS[key]
@@ -122,7 +150,7 @@ class LevatineSim(BaseActor):
         f_data = frames[min(seq_index, len(frames)-1)]
 
         def perform():
-            self._deal_dmg_and_react(mv, MoveType.NORMAL, apply_heat=True)
+            self._deal_damage(mv, MoveType.NORMAL, apply_element=True)
             # 强化普攻天赋
             if self.is_ult_active and (seq_index + 1) in [2, 4]:
                 self.target.buffs.add_buff(HeatInflict(), self.engine)
@@ -137,9 +165,9 @@ class LevatineSim(BaseActor):
     def create_skill(self):
         f_data = FRAME_DATA['skill']
         events = []
-        
+
         def hit_init():
-            self._deal_dmg_and_react(SKILL_MULTIPLIERS['skill_initial'], MoveType.SKILL, apply_heat=True)
+            self._deal_damage(SKILL_MULTIPLIERS['skill_initial'], MoveType.SKILL, apply_element=True)
             self.molten_stacks = min(4, self.molten_stacks + 1)
             self.engine.log(f"   (状态) 熔火层数: {self.molten_stacks}")
         
@@ -147,9 +175,9 @@ class LevatineSim(BaseActor):
             if self.molten_stacks >= 4:
                 self.molten_stacks = 0
                 self.engine.log(f"   >>> 熔火核爆！")
-                
+
                 # 核爆伤害
-                self._deal_dmg_and_react(SKILL_MULTIPLIERS['skill_burst'], MoveType.SKILL, apply_heat=True)
+                self._deal_damage(SKILL_MULTIPLIERS['skill_burst'], MoveType.SKILL, apply_element=True)
                 
                 # 强制施加燃烧
                 stats = self.get_current_panel()

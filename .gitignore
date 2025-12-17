@@ -22,3 +22,16 @@ Thumbs.db
 
 # 临时数据或日志
 *.log
+
+# 配置文件（可选：如果想版本控制配置，注释掉下面这行）
+config.json
+config.yaml
+custom_config.*
+
+# 统计报告和输出
+report.txt
+output/
+*.csv
+
+.claude
+CLAUDE.md

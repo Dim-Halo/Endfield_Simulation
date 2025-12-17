@@ -1,126 +1,274 @@
-from typing import List, Dict
+from typing import List, Dict, Optional
+from core.enums import BuffCategory, BuffEffect, ReactionType
+from core.formulas import calculate_tech_enhancement
 
 class Buff:
-    def __init__(self, name, duration_sec, max_stacks=1, tags=None):
+    """Buff基类"""
+    def __init__(self, name: str, duration_sec: float, max_stacks: int = 1,
+                 category: BuffCategory = BuffCategory.NEUTRAL,
+                 effect_type: BuffEffect = BuffEffect.STAT_MODIFIER):
         self.name = name
         self.duration_ticks = int(duration_sec * 10)
         self.max_stacks = max_stacks
         self.stacks = 1
-        self.tags = tags or []
-        self.timer = 0 
+        self.category = category  # 使用枚举
+        self.effect_type = effect_type  # 使用枚举
+        self.timer = 0
 
-    def on_apply(self, owner): pass
-    def modify_stats(self, stats: Dict): pass
-    
+        # 额外标签（用于特殊识别，如反应类型）
+        self.tags = []
+
+    def on_apply(self, owner):
+        """Buff施加时触发"""
+        pass
+
+    def modify_stats(self, stats: Dict):
+        """修改目标属性"""
+        pass
+
     def on_stack(self, new_buff):
+        """Buff叠加时触发"""
         self.stacks = min(self.max_stacks, self.stacks + new_buff.stacks)
         self.duration_ticks = new_buff.duration_ticks
 
     def on_tick(self, owner, engine):
+        """每tick触发，返回True表示过期"""
         self.timer += 1
         self.duration_ticks -= 1
         return self.duration_ticks <= 0
 
-# --- 具体 Buff 实现 ---
+# ============================================================
+# 通用Buff类 - 大多数简单Buff可以用这个类
+# ============================================================
 
-class AtkPctBuff(Buff):
+class StatModifierBuff(Buff):
     """
-    攻击力百分比Buff
-    加算到 atk_pct 中
+    通用属性修改Buff
+
+    可以替代: AtkPctBuff, VulnerabilityBuff, FragilityBuff, ElementalDmgBuff等
+
+    使用示例:
+        # 攻击力提升
+        StatModifierBuff("攻击强化", 10.0, {"atk_pct": 0.2}, BuffCategory.BUFF)
+
+        # 易伤效果
+        StatModifierBuff("易伤", 8.0, {"vulnerability": 0.15}, BuffCategory.DEBUFF)
+
+        # 元素增伤
+        StatModifierBuff("热能增伤", 12.0, {"heat_dmg_bonus": 0.25}, BuffCategory.BUFF)
     """
-    def __init__(self, name, value, duration):
-        super().__init__(name, duration, tags=["buff", "atk_up"])
-        self.value = value
+    def __init__(self, name: str, duration: float,
+                 stat_modifiers: Dict[str, float],
+                 category: BuffCategory = BuffCategory.BUFF,
+                 max_stacks: int = 1):
+        super().__init__(name, duration, max_stacks, category, BuffEffect.STAT_MODIFIER)
+        self.stat_modifiers = stat_modifiers
 
     def modify_stats(self, stats: Dict):
-        if "atk_pct" in stats:
-            stats["atk_pct"] += self.value
+        for key, value in self.stat_modifiers.items():
+            if key in stats:
+                stats[key] += value * self.stacks  # 支持叠加
+            else:
+                stats[key] = value * self.stacks
 
-class DoTBuff(Buff):
-    def __init__(self, name, duration, damage_per_tick, interval_sec=1.0, tags=None):
-        super().__init__(name, duration, max_stacks=1, tags=tags)
-        self.damage = damage_per_tick
-        self.interval_ticks = int(interval_sec * 10)
-        self.tick_counter = 0
+# ============================================================
+# 保持向后兼容的简化类（使用StatModifierBuff实现）
+# ============================================================
 
-    def on_tick(self, owner, engine):
-        is_expired = super().on_tick(owner, engine)
-        self.tick_counter += 1
-        if self.tick_counter >= self.interval_ticks:
-            self.tick_counter = 0
-            engine.log(f"   ☠️ [{self.name}] 造成 {int(self.damage)} 点持续伤害")
-            if hasattr(owner, 'take_damage'):
-                owner.take_damage(self.damage)
-        return is_expired
+class AtkPctBuff(StatModifierBuff):
+    """攻击力百分比增益Buff（向后兼容）"""
+    def __init__(self, name: str, value: float, duration: float):
+        super().__init__(name, duration, {"atk_pct": value}, BuffCategory.BUFF)
 
-class VulnerabilityBuff(Buff):
-    """通用易伤Buff基类"""
-    def __init__(self, name, duration, value, vuln_type="all"):
-        # vuln_type: "all", "magic", "physical"
-        tags = ["debuff", "vulnerability", vuln_type]
-        super().__init__(name, duration, tags=tags)
-        self.value = value
-        self.vuln_type = vuln_type
-
-    def modify_stats(self, stats: Dict):
+class VulnerabilityBuff(StatModifierBuff):
+    """易伤Buff（向后兼容）"""
+    def __init__(self, name: str, duration: float, value: float, vuln_type: str = "all"):
         key_map = {
             "all": "vulnerability",
             "magic": "magic_vulnerability",
             "physical": "physical_vulnerability"
         }
-        key = key_map.get(self.vuln_type, "vulnerability")
-        if key in stats:
-            stats[key] += self.value
+        key = key_map.get(vuln_type, "vulnerability")
+        super().__init__(name, duration, {key: value}, BuffCategory.DEBUFF)
+
+class ElementalDmgBuff(StatModifierBuff):
+    """元素伤害增益Buff（向后兼容）"""
+    def __init__(self, name: str, duration: float, element_type: str, value: float):
+        elem_key = f"{element_type}_dmg_bonus"
+        super().__init__(name, duration, {elem_key: value}, BuffCategory.BUFF)
+
+class FragilityBuff(StatModifierBuff):
+    """脆弱Buff（向后兼容）"""
+    def __init__(self, name: str, duration: float, value: float, element_type: str = "all"):
+        key = "fragility" if element_type == "all" else f"{element_type}_fragility"
+        super().__init__(name, duration, {key: value}, BuffCategory.DEBUFF)
+
+# ============================================================
+# 持续伤害类Buff
+# ============================================================
+
+class DoTBuff(Buff):
+    """持续伤害Buff基类"""
+    def __init__(self, name: str, duration: float, damage_per_tick: float,
+                 interval_sec: float = 1.0, source_name: str = "未知",
+                 reaction_type: Optional[ReactionType] = None):
+        super().__init__(name, duration, max_stacks=1,
+                        category=BuffCategory.DEBUFF, effect_type=BuffEffect.DOT)
+        self.damage = damage_per_tick
+        self.interval_ticks = int(interval_sec * 10)
+        self.tick_counter = 0
+        self.source_name = source_name
+
+        # 设置反应类型标签
+        if reaction_type:
+            self.tags.append(reaction_type)
+
+    def on_tick(self, owner, engine):
+        is_expired = super().on_tick(owner, engine)
+        self.tick_counter += 1
+
+        if self.tick_counter >= self.interval_ticks:
+            self.tick_counter = 0
+            engine.log(f"   [DOT] [{self.name}] 造成 {int(self.damage)} 点持续伤害")
+
+            if hasattr(owner, 'take_damage'):
+                owner.take_damage(self.damage)
+
+                # 记录到统计系统
+                if hasattr(engine, 'statistics'):
+                    from core.enums import Element, MoveType
+                    engine.statistics.record_damage(
+                        tick=engine.tick,
+                        source=self.source_name,
+                        target=owner.name,
+                        skill_name=self.name,
+                        damage=self.damage,
+                        element=Element.HEAT,
+                        move_type=MoveType.OTHER,
+                        is_crit=False,
+                        is_reaction=True
+                    )
+        return is_expired
+
+# ============================================================
+# 元素反应Buff（使用增强计算）
+# ============================================================
 
 class BurningBuff(DoTBuff):
-    def __init__(self, damage_value, duration=5.0):
-        super().__init__("燃烧", duration, damage_value, interval_sec=1.0, tags=["burning", "dot"])
+    """燃烧Buff"""
+    def __init__(self, damage_value: float, duration: float = 10.0, source_name: str = "未知"):
+        super().__init__("燃烧", duration, damage_value,
+                        interval_sec=1.0, source_name=source_name,
+                        reaction_type=ReactionType.BURNING)
 
-class ConductiveBuff(Buff):
-    def __init__(self, duration=10.0, vuln=0.20):
-        super().__init__("导电", duration, tags=["conductive", "debuff"])
-        self.vuln = vuln
-    def modify_stats(self, stats: Dict):
-        if "magic_vulnerability" in stats:
-            stats["magic_vulnerability"] += self.vuln
-
-class FrozenBuff(Buff):
-    def __init__(self, duration=5.0):
-        super().__init__("冻结", duration, tags=["frozen", "cc"])
+class ConductiveBuff(StatModifierBuff):
+    """导电Buff - 增加法术易伤"""
+    def __init__(self, duration: float = 12.0, base_vuln: float = 0.12, tech_power: float = 0.0):
+        final_vuln = calculate_tech_enhancement(tech_power, base_vuln)
+        super().__init__("导电", duration, {"magic_vulnerability": final_vuln}, BuffCategory.DEBUFF)
+        self.tags.append(ReactionType.CONDUCTIVE)
 
 class CorrosionBuff(Buff):
-    def __init__(self, duration=10.0, res_shred=0.15):
-        super().__init__("腐蚀", duration, tags=["corrosion", "debuff"])
-        self.res_shred = res_shred
+    """腐蚀Buff - 降低所有元素抗性"""
+    def __init__(self, duration: float = 15.0, base_res_shred: float = 0.10, tech_power: float = 0.0):
+        super().__init__("腐蚀", duration, category=BuffCategory.DEBUFF)
+        self.final_shred = calculate_tech_enhancement(tech_power, base_res_shred)
+        self.tags.append(ReactionType.CORROSION)
+
     def modify_stats(self, stats: Dict):
         for k in list(stats.keys()):
             if k.endswith("_res"):
-                stats[k] -= self.res_shred
+                stats[k] -= self.final_shred
+
+class ShatterArmorBuff(StatModifierBuff):
+    """碎甲Buff - 增加物理易伤"""
+    def __init__(self, duration: float = 12.0, base_vuln: float = 0.11, tech_power: float = 0.0):
+        final_vuln = calculate_tech_enhancement(tech_power, base_vuln)
+        super().__init__("碎甲", duration, {"physical_vulnerability": final_vuln}, BuffCategory.DEBUFF)
+
+# ============================================================
+# 控制效果Buff
+# ============================================================
+
+class FrozenBuff(Buff):
+    """冻结Buff"""
+    def __init__(self, duration: float = 6.0):
+        super().__init__("冻结", duration, category=BuffCategory.DEBUFF, effect_type=BuffEffect.CC)
+        self.tags.append(ReactionType.FROZEN)
+
+class FocusDebuff(Buff):
+    """聚焦Debuff"""
+    def __init__(self, duration: float = 60.0):
+        super().__init__("聚焦", duration, category=BuffCategory.DEBUFF)
+        self.tags.append("focus")  # 添加特殊标签以便识别
+
 
 class BuffManager:
+    """Buff管理器"""
     def __init__(self, owner):
         self.owner = owner
         self.buffs: List[Buff] = []
 
     def add_buff(self, new_buff: Buff, engine=None):
+        """添加或叠加Buff"""
         for b in self.buffs:
             if b.name == new_buff.name:
                 b.on_stack(new_buff)
-                if engine: engine.log(f"   (Buff) [{self.owner.name}] 刷新: {b.name} (层数:{b.stacks})")
+                if engine:
+                    engine.log(f"   (Buff) [{self.owner.name}] 刷新: {b.name} (层数:{b.stacks})")
+                    # 发布Buff叠加事件
+                    if hasattr(engine, 'event_bus'):
+                        from simulation.event_system import EventType, EventBuilder
+                        event = EventBuilder.buff_event(
+                            EventType.BUFF_STACKED,
+                            owner=self.owner,
+                            buff_name=b.name,
+                            source=None,
+                            stacks=b.stacks,
+                            tick=engine.tick
+                        )
+                        engine.event_bus.emit(event)
                 return
+
         self.buffs.append(new_buff)
-        if engine: engine.log(f"   (Buff) [{self.owner.name}] 获得: {new_buff.name}")
+        if engine:
+            engine.log(f"   (Buff) [{self.owner.name}] 获得: {new_buff.name}")
+            # 发布Buff施加事件
+            if hasattr(engine, 'event_bus'):
+                from simulation.event_system import EventType, EventBuilder
+                event = EventBuilder.buff_event(
+                    EventType.BUFF_APPLIED,
+                    owner=self.owner,
+                    buff_name=new_buff.name,
+                    source=None,
+                    stacks=new_buff.stacks,
+                    tick=engine.tick,
+                    tags=new_buff.tags,
+                    buff_instance=new_buff
+                )
+                engine.event_bus.emit(event)
 
     def tick_all(self, engine):
+        """更新所有Buff"""
         active_buffs = []
         for b in self.buffs:
             if not b.on_tick(self.owner, engine):
                 active_buffs.append(b)
             else:
                 engine.log(f"   (Buff) [{self.owner.name}] 效果结束: {b.name}")
+                # 发布Buff过期事件
+                if hasattr(engine, 'event_bus'):
+                    from simulation.event_system import EventType
+                    engine.event_bus.emit_simple(
+                        EventType.BUFF_EXPIRED,
+                        owner=self.owner.name,
+                        buff_name=b.name,
+                        tick=engine.tick
+                    )
         self.buffs = active_buffs
 
     def apply_stats(self, base_stats: Dict):
+        """应用所有Buff的属性修改"""
         import copy
         final_stats = copy.deepcopy(base_stats)
         for b in self.buffs:
@@ -128,52 +276,13 @@ class BuffManager:
         return final_stats
 
     def consume_tag(self, tag):
+        """消耗第一个匹配tag的Buff"""
         for b in self.buffs:
             if tag in b.tags:
                 self.buffs.remove(b)
                 return True
         return False
-        
+
     def has_tag(self, tag):
+        """检查是否存在指定tag的Buff"""
         return any(tag in b.tags for b in self.buffs)
-    
-class ElementalDmgBuff(Buff):
-    """特定元素伤害加成Buff"""
-    def __init__(self, name, duration, element_type: str, value: float):
-        # element_type: "heat", "electric", etc.
-        super().__init__(name, duration, tags=["buff", f"{element_type}_buff"])
-        self.elem_key = f"{element_type}_dmg_bonus"
-        self.value = value
-
-    def modify_stats(self, stats: Dict):
-        if self.elem_key in stats:
-            stats[self.elem_key] += self.value
-
-class FragilityBuff(Buff):
-    """
-    脆弱Buff
-    作用于目标的脆弱区
-    """
-    def __init__(self, name, duration, value, element_type="all"):
-        # element_type: "all", "heat", "electric", etc.
-        tags = ["debuff", "fragility", element_type]
-        super().__init__(name, duration, tags=tags)
-        self.value = value
-        self.element_type = element_type
-
-    def modify_stats(self, stats: Dict):
-        # 映射到 dummy.py 中定义的字段
-        if self.element_type == "all":
-            key = "fragility"
-        else:
-            key = f"{self.element_type}_fragility"
-            
-        if key in stats:
-            stats[key] += self.value
-        else:
-            stats[key] = self.value # 防止字典里没定义
-
-class FocusDebuff(Buff):
-    """聚焦状态: 用于安塔尔QTE判定"""
-    def __init__(self, duration=60.0):
-        super().__init__("聚焦", duration, tags=["debuff", "focus"])

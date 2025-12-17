@@ -12,6 +12,7 @@ class Attributes:
 @dataclass
 class CombatStats:
     # --- 1. 基础区 ---
+    level: int = 90
     base_hp: float = 0      # 基础生命
     base_def: float = 0     # 基础防御
 
@@ -20,18 +21,21 @@ class CombatStats:
 
     atk_pct: float = 0.0      # 攻击力%
     flat_atk: float = 0.0     # 固定攻击力
+
+    # 源石技艺强度
+    technique_power: float = 0.0
     
     # --- 2. 增伤区 (Damage Bonus) ---
     # 全区增伤
     dmg_bonus: float = 0.0
 
-    # 特定招式增伤
+    # 招式增伤
     normal_dmg_bonus: float = 0.0 # 普攻增伤
     skill_dmg_bonus: float = 0.0  # 战技增伤
     ult_dmg_bonus: float = 0.0    # 大招增伤
     qte_dmg_bonus: float = 0.0    # 连携技增伤
 
-    # 特定元素增伤
+    # 元素增伤
     heat_dmg_bonus: float = 0.0
     electric_dmg_bonus: float = 0.0
     frost_dmg_bonus: float = 0.0
@@ -48,6 +52,9 @@ class CombatStats:
     # --- 5. 增幅区 (Amplification - 独立乘区) ---
     # 极少见的乘区，通常来自特殊大招或核心被动
     amplification: float = 0.0
+
+    # 特殊加成区(如连击)
+    special_bonus: float = 0.0
 
     # 治疗加成
     heal_bonus: float = 0.0

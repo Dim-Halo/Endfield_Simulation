@@ -1,95 +1,144 @@
-# core/calculator.py
 from .enums import Element, MoveType
 
 class DamageEngine:
     @staticmethod
-    def calculate(attacker_stats: dict, target_stats: dict, skill_mv: float, 
-                  element: Element, is_staggered: bool = False, move_type: MoveType = MoveType.OTHER):
+    def calculate(attacker_stats: dict, target_stats: dict, skill_mv: float,
+                  element: Element, move_type: MoveType = MoveType.OTHER):
         """
-        终末地伤害公式 (参考技术测试)
-        Final = (面板攻击 * 属性修正 * 倍率) * (1+增伤) * 暴击 * (1+易伤) * (1+增幅) * 防御区 * 抗性区
+        伤害计算公式（14个乘区）：
+        基础伤害区 × 暴击区 × 伤害加成区 × 伤害减免区 × 易伤区 × 增幅区 × 庇护区 ×
+        脆弱区 × 防御区 × 失衡易伤区 × 减伤区 × 抗性区 × 非主控减伤区 × 特殊加成区
         """
-        
-        # -------------------------------------------------
-        # 1. 基础伤害区 (Base Zone)
-        # -------------------------------------------------
+
+        # ============================================================
+        # 1. 基础伤害区
+        # ============================================================
         atk = attacker_stats['final_atk']
         base_dmg = atk * (skill_mv / 100.0)
-        
-        # -------------------------------------------------
-        # 2. 增伤区 (Damage Bonus Zone) - 加算
-        # -------------------------------------------------
-        base_bonus = attacker_stats.get('dmg_bonus', 0.0)
-        
-        # 招式增伤
-        move_bonus = 0.0
-        if move_type == MoveType.NORMAL: move_bonus = attacker_stats.get('normal_dmg_bonus', 0.0)
-        elif move_type == MoveType.SKILL: move_bonus = attacker_stats.get('skill_dmg_bonus', 0.0)
-        elif move_type == MoveType.ULTIMATE: move_bonus = attacker_stats.get('ult_dmg_bonus', 0.0)
-        elif move_type == MoveType.QTE: move_bonus = attacker_stats.get('qte_dmg_bonus', 0.0)
 
-        elem_bonus = attacker_stats.get(f"{element.value}_dmg_bonus", 0.0)
-
-        # 最终增伤
-        bonus_mult = 1.0 + base_bonus + move_bonus + elem_bonus
-        
-        # -------------------------------------------------
-        # 3. 暴击区 (Critical Zone)
-        # -------------------------------------------------
+        # ============================================================
+        # 2. 暴击区
+        # ============================================================
         c_rate = min(1.0, max(0.0, attacker_stats.get('crit_rate', 0.0)))
         c_dmg = attacker_stats.get('crit_dmg', 0.5)
         crit_mult = 1.0 + (c_rate * c_dmg)
-        
-        # -------------------------------------------------
-        # 4. 易伤区 (Vulnerability Zone) - 敌方身上的Debuff
-        # -------------------------------------------------
-        # 包含：通用易伤、受到元素伤害增加
+
+        # ============================================================
+        # 3. 伤害加成区（加算）
+        # ============================================================
+        base_bonus = attacker_stats.get('dmg_bonus', 0.0)
+
+        # 招式增伤
+        move_bonus = 0.0
+        if move_type == MoveType.NORMAL:
+            move_bonus = attacker_stats.get('normal_dmg_bonus', 0.0)
+        elif move_type == MoveType.SKILL:
+            move_bonus = attacker_stats.get('skill_dmg_bonus', 0.0)
+        elif move_type == MoveType.ULTIMATE:
+            move_bonus = attacker_stats.get('ult_dmg_bonus', 0.0)
+        elif move_type == MoveType.QTE:
+            move_bonus = attacker_stats.get('qte_dmg_bonus', 0.0)
+
+        # 元素增伤
+        elem_bonus = attacker_stats.get(f"{element.value}_dmg_bonus", 0.0)
+
+        # 失衡增伤（对失衡目标伤害加成，属于伤害加成区）
+        stagger_bonus = 0.0
+        if target_stats.get('is_staggered', False):
+            stagger_bonus = attacker_stats.get('stagger_dmg_bonus', 0.0)
+
+        bonus_mult = 1.0 + base_bonus + move_bonus + elem_bonus + stagger_bonus
+
+        # ============================================================
+        # 4. 伤害减免区（目标的基础伤害减免）
+        # ============================================================
+        dmg_reduction = target_stats.get('dmg_reduction', 0.0)
+        dmg_reduction_mult = 1.0 - dmg_reduction
+
+        # ============================================================
+        # 5. 易伤区（Vulnerability - 加算）
+        # ============================================================
         vuln = target_stats.get('vulnerability', 0.0)
         if element != Element.PHYSICAL:
             vuln += target_stats.get('magic_vulnerability', 0.0)
         else:
-            # 物理易伤
             vuln += target_stats.get('physical_vulnerability', 0.0)
-            
-        # 元素易伤
         vuln += target_stats.get(f"{element.value}_vulnerability", 0.0)
-            
         vuln_mult = 1.0 + vuln
-        
-        # 失衡(Break)状态通常视为一种巨额易伤或独立增幅
-        stagger_vuln = 0.3 if is_staggered else 0.0 # 假设失衡提供50%易伤
-        
-        vuln_mult = 1.0 + vuln + stagger_vuln
-        
-        # -------------------------------------------------
-        # 5. 增幅区 (Amplification Zone) - 稀有独立乘区
-        # -------------------------------------------------
-        # 来自攻击者的特殊Buff (如: "造成的伤害提高x%，独立计算")
+
+        # ============================================================
+        # 6. 增幅区
+        # ============================================================
         amp_mult = 1.0 + attacker_stats.get('amplification', 0.0)
-        
-        # -------------------------------------------------
-        # 6. 防御区 (Defense Zone)
-        # -------------------------------------------------
-        def_mult = 0.5
-        
-        # -------------------------------------------------
-        # 7. 抗性区 (Resistance Zone)
-        # -------------------------------------------------
+
+        # ============================================================
+        # 7. 庇护区（独立乘区）
+        # ============================================================
+        sanctuary = target_stats.get('sanctuary', 0.0)
+        sanctuary_mult = 1.0 - sanctuary
+
+        # ============================================================
+        # 8. 脆弱区（Fragility - 独立乘区）
+        # ============================================================
+        fragility = target_stats.get('fragility', 0.0)
+        fragility += target_stats.get(f"{element.value}_fragility", 0.0)
+        fragility_mult = 1.0 + fragility
+
+        # ============================================================
+        # 9. 防御区
+        # ============================================================
+        defense = max(0, target_stats.get('defense', 0))
+        def_const = 100.0
+        def_mult = def_const / (def_const + defense)
+
+        # ============================================================
+        # 10. 失衡易伤区（独立 1.3倍）
+        # ============================================================
+        stagger_vuln_mult = 1.3 if target_stats.get('is_staggered', False) else 1.0
+
+        # ============================================================
+        # 11. 减伤区（额外的减伤机制，与伤害减免区不同）
+        # ============================================================
+        dmg_reduction_extra = target_stats.get('dmg_reduction_extra', 0.0)
+        dmg_reduction_extra_mult = 1.0 - dmg_reduction_extra
+
+        # ============================================================
+        # 12. 抗性区
+        # ============================================================
         res_key = f"{element.value}_res"
         raw_res = target_stats.get(res_key, 0.0)
         res_pen = attacker_stats.get('res_pen', 0.0)
         final_res = max(0.0, raw_res - res_pen)
         res_mult = 1.0 - final_res
 
-        # 8. 脆弱区 (Fragility Zone - 独立乘区)
-        fragility = target_stats.get('fragility', 0.0) # 通用脆弱
-        fragility += target_stats.get(f"{element.value}_fragility", 0.0) # 特定元素脆弱
-        fragility_mult = 1.0 + fragility
+        # ============================================================
+        # 13. 非主控减伤区（AI惩罚）
+        # ============================================================
+        non_main_mult = attacker_stats.get('non_main_penalty', 1.0)
 
-        
-        # -------------------------------------------------
-        # 最终汇总
-        # -------------------------------------------------
-        final_dmg = base_dmg * bonus_mult * crit_mult * vuln_mult * amp_mult * def_mult * res_mult * fragility_mult
-        
-        return int(max(1, final_dmg))
+        # ============================================================
+        # 14. 特殊加成区
+        # ============================================================
+        special_mult = 1.0 + attacker_stats.get('special_bonus', 0.0)
+
+        # ============================================================
+        # 最终汇总（严格按照14个乘区的顺序）
+        # ============================================================
+        final_dmg = (
+            base_dmg *                      # 1. 基础伤害区
+            crit_mult *                     # 2. 暴击区
+            bonus_mult *                    # 3. 伤害加成区
+            dmg_reduction_mult *            # 4. 伤害减免区
+            vuln_mult *                     # 5. 易伤区
+            amp_mult *                      # 6. 增幅区
+            sanctuary_mult *                # 7. 庇护区
+            fragility_mult *                # 8. 脆弱区
+            def_mult *                      # 9. 防御区
+            stagger_vuln_mult *             # 10. 失衡易伤区
+            dmg_reduction_extra_mult *      # 11. 减伤区
+            res_mult *                      # 12. 抗性区
+            non_main_mult *                 # 13. 非主控减伤区
+            special_mult                    # 14. 特殊加成区
+        )
+
+        return int(final_dmg)

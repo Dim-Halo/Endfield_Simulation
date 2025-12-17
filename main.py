@@ -10,7 +10,7 @@ def main():
     sim = SimEngine()
     
     # 1. 敌人初始化 (稍微加点防御看减伤效果，无抗性)
-    target = DummyEnemy(sim, "测试机甲-01", defense=800, resistances={"heat": 0.0, "nature": 0.0, "electric": 0.0})
+    target = DummyEnemy(sim, "测试机甲-01", defense=100, resistances={"heat": 0.0, "nature": 0.0, "electric": 0.0})
     
     # 2. 四人小队集结
     antal = AntalSim(sim, target)   # 辅助/副C
@@ -86,7 +86,9 @@ def main():
     total_dmg = target.total_damage_taken
     print(f"\n====== 战斗结算 ======")
     print(f"敌人承受总伤害: {int(total_dmg)}")
-    # 这里的 total_damage_taken 是简单的累加，你可以给 BaseActor 加个 damage_dealt 属性来统计个人伤害
+
+    # 打印详细统计报告
+    print("\n" + sim.statistics.generate_report())
 
 if __name__ == "__main__":
     main()
