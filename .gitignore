@@ -1,0 +1,37 @@
+# Python 编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# IDE 配置文件 (VS Code, PyCharm 等)
+.vscode/
+.idea/
+*.swp
+
+# Streamlit 缓存
+.streamlit/
+
+# 操作系统生成的文件
+.DS_Store
+Thumbs.db
+
+# 临时数据或日志
+*.log
+
+# 配置文件（可选：如果想版本控制配置，注释掉下面这行）
+config.json
+config.yaml
+custom_config.*
+
+# 统计报告和输出
+report.txt
+output/
+*.csv
+
+.claude
+CLAUDE.md
