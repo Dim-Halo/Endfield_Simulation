@@ -17,7 +17,11 @@ from entities.characters.levatine_sim import LevatineSim
 from entities.characters.wolfguard_sim import WolfguardSim
 from entities.characters.erdila_sim import ErdilaSim
 from entities.characters.antal_sim import AntalSim
+from entities.characters.chen_sim import ChenSim
+from entities.characters.admin_sim import AdminSim
+from entities.characters.guard_sim import GuardSim
 from core.enums import BuffCategory, BuffEffect, ReactionType
+from simulation.presets import PRESETS
 
 # ==========================================
 # 1. 样式与辅助函数
@@ -204,12 +208,24 @@ class SnapshotEngine(SimEngine):
 # ==========================================
 st.set_page_config(page_title="终末地战斗模拟器", layout="wide")
 
-CHAR_MAP = { "无": None, "莱瓦汀": LevatineSim, "狼卫": WolfguardSim, "艾尔黛拉": ErdilaSim, "安塔尔": AntalSim }
+CHAR_MAP = { 
+    "无": None, 
+    "莱瓦汀": LevatineSim, 
+    "狼卫": WolfguardSim, 
+    "艾尔黛拉": ErdilaSim, 
+    "安塔尔": AntalSim,
+    "陈千语": ChenSim,
+    "管理员": AdminSim,
+    "骏卫": GuardSim
+}
 DEFAULT_SCRIPTS = {
     "莱瓦汀": "wait 8.5\nult\nwait 0.5\na1\nwait 0.5\nskill",
     "狼卫": "wait 11.4\nqte\nwait 2.0\nskill",
     "艾尔黛拉": "wait 4.0\nqte\nwait 1.5\nskill",
-    "安塔尔": "skill\nwait 0.5\nult"
+    "安塔尔": "skill\nwait 0.5\nult",
+    "陈千语": "a5\nwait 3.0\nult\nskill",
+    "管理员": "qte\nwait 1.5\nult\nskill",
+    "骏卫": "wait 3.5\nult\nwait 2.0\nskill\nqte"
 }
 
 # ==========================================
@@ -223,20 +239,51 @@ res_heat = st.sidebar.slider("灼热抗性", -1.0, 1.0, 0.0, 0.1)
 res_elec = st.sidebar.slider("电磁抗性", -1.0, 1.0, 0.0, 0.1)
 res_nature = st.sidebar.slider("自然抗性", -1.0, 1.0, 0.0, 0.1)
 
+# --- 预设选择器 (Sidebar) ---
+st.sidebar.divider()
+preset_options = ["自定义"] + list(PRESETS.keys())
+selected_preset = st.sidebar.selectbox("📥 加载队伍预设", preset_options)
+
 st.title("🎬 终末地战斗排轴演示")
 
-with st.expander("📝 编队与脚本", expanded=False):
+preset_data = None
+if selected_preset != "自定义":
+    preset_data = PRESETS[selected_preset]
+    st.info(f"**当前预设**: {selected_preset}\n\n{preset_data['description']}")
+
+with st.expander("📝 编队与脚本", expanded=True):
     cols = st.columns(4)
     selected_chars = []
-    for i in range(4):
-        with cols[i]:
-            idx = i + 1 if i < 4 else 0
-            c_name = st.selectbox(f"位置 {i+1}", list(CHAR_MAP.keys()), index=idx, key=f"c_{i}")
-            if c_name != "无":
-                script = st.text_area("脚本", value=DEFAULT_SCRIPTS.get(c_name, ""), height=100, key=f"s_{i}")
-                stacks = 0
-                if "莱瓦汀" in c_name: stacks = st.number_input("熔火", 0, 4, 3, key=f"st_{i}")
-                selected_chars.append({"class": CHAR_MAP[c_name], "script": script, "stacks": stacks, "name": c_name})
+    
+    # 如果选择了预设，从预设加载
+    if preset_data:
+        team_data = preset_data['team']
+        for i in range(4):
+            with cols[i]:
+                if i < len(team_data):
+                    char_info = team_data[i]
+                    c_name = char_info['name']
+                    c_cls = char_info['class']
+                    # 将列表脚本转换为文本
+                    script_text = "\n".join(char_info['script'])
+                    
+                    st.text_input(f"位置 {i+1}", value=c_name, disabled=True, key=f"p_name_{i}")
+                    script = st.text_area("脚本", value=script_text, height=150, key=f"p_s_{i}")
+                    
+                    selected_chars.append({"class": c_cls, "script": script, "stacks": 0, "name": c_name})
+                else:
+                    st.text_input(f"位置 {i+1}", value="无", disabled=True, key=f"p_name_{i}")
+    else:
+        # 自定义模式
+        for i in range(4):
+            with cols[i]:
+                idx = i + 1 if i < 4 else 0
+                c_name = st.selectbox(f"位置 {i+1}", list(CHAR_MAP.keys()), index=idx, key=f"c_{i}")
+                if c_name != "无":
+                    script = st.text_area("脚本", value=DEFAULT_SCRIPTS.get(c_name, ""), height=100, key=f"s_{i}")
+                    stacks = 0
+                    if "莱瓦汀" in c_name: stacks = st.number_input("熔火", 0, 4, 3, key=f"st_{i}")
+                    selected_chars.append({"class": CHAR_MAP[c_name], "script": script, "stacks": stacks, "name": c_name})
 
 # --- 数据预处理：生成甘特图 ---
 def build_gantt_data(history, char_names):

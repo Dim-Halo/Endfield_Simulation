@@ -2,13 +2,21 @@
 伤害处理辅助函数
 提供统一的伤害计算和记录接口
 """
+from typing import TYPE_CHECKING, List, Union, Optional
 from core.calculator import DamageEngine
-from core.enums import Element, MoveType
+from core.enums import Element, MoveType, PhysAnomalyType
+from core.stats import StatKey
 from simulation.event_system import EventType, EventBuilder
 
+if TYPE_CHECKING:
+    from simulation.engine import SimEngine
+    from entities.characters.base_actor import BaseActor
+    from entities.dummy import DummyEnemy
 
-def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
-                element: Element, move_type: MoveType = MoveType.OTHER):
+
+def deal_damage(engine: 'SimEngine', attacker: 'BaseActor', target: 'DummyEnemy', skill_name: str, skill_mv: float,
+                element: Element, move_type: MoveType = MoveType.OTHER, 
+                attachments: Optional[List[Union[Element, PhysAnomalyType]]] = None) -> float:
     """
     统一的伤害处理接口
 
@@ -28,6 +36,7 @@ def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
         skill_mv: 技能倍率
         element: 元素类型
         move_type: 招式类型
+        attachments: 施加的附着列表（包括元素附着和物理异常）。如果为None，默认尝试施加damage element。如果为空列表，则不施加。
 
     Returns:
         int: 最终伤害值
@@ -38,10 +47,15 @@ def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
     # 2. 处理元素反应
     reaction_result = target.reaction_mgr.apply_hit(
         element,
-        attacker_atk=attacker_stats['final_atk'],
-        attacker_tech=attacker_stats.get('technique_power', 0),
-        attacker_lvl=attacker_stats.get('level', 80)
+        attachments=attachments,
+        attacker_atk=attacker_stats[StatKey.FINAL_ATK],
+        attacker_tech=attacker_stats.get(StatKey.TECH_POWER, 0),
+        attacker_lvl=attacker_stats.get(StatKey.LEVEL, 90)
     )
+    
+    # 2.1 处理来自 Buff 的反应增强 (如猛击伤害提升)
+    # 不再在 helper 中写死逻辑，而是委托给 attacker 的 BuffManager 处理
+    attacker.buffs.apply_reaction_enhancements(reaction_result)
 
     # 3. 获取防御方数据
     target_stats = target.get_defense_stats()
@@ -53,7 +67,7 @@ def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
     )
 
     # 5. 判断是否暴击
-    crit_rate = attacker_stats.get('crit_rate', 0.0)
+    crit_rate = attacker_stats.get(StatKey.CRIT_RATE, 0.0)
     import random
     is_crit = random.random() < crit_rate
 
@@ -113,15 +127,16 @@ def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
         )
 
     # 11. 记录元素反应
-    if is_reaction and reaction_result.reaction_type:
-        engine.statistics.record_reaction(
-            tick=engine.tick,
-            trigger=attacker.name,
-            target=target.name,
-            reaction_type=reaction_result.reaction_type,
-            level=target.reaction_mgr.attachment_stacks,
-            extra_damage=reaction_result.extra_mv * attacker_stats['final_atk'] / 100.0
-        )
+    if is_reaction and reaction_result.reaction_types:
+        for r_type in reaction_result.reaction_types:
+            engine.statistics.record_reaction(
+                tick=engine.tick,
+                trigger=attacker.name,
+                target=target.name,
+                reaction_type=r_type,
+                level=target.reaction_mgr.attachment_stacks,
+                extra_damage=reaction_result.extra_mv * attacker_stats[StatKey.FINAL_ATK] / 100.0
+            )
 
     # 12. 日志输出
     log_parts = [f"[{attacker.name}] {skill_name} Hit造成伤害"]
@@ -136,7 +151,7 @@ def deal_damage(engine, attacker, target, skill_name: str, skill_mv: float,
     return final_damage
 
 
-def deal_true_damage(engine, attacker, target, skill_name: str, damage: float):
+def deal_true_damage(engine: 'SimEngine', attacker: 'BaseActor', target: 'DummyEnemy', skill_name: str, damage: float) -> float:
     """
     造成真实伤害（无视防御和抗性）
 

@@ -1,12 +1,13 @@
 # entities/characters/wolfguard_sim.py
 from .base_actor import BaseActor
 from simulation.action import Action, DamageEvent
-from core.calculator import DamageEngine
 from core.stats import CombatStats, Attributes
 from core.enums import Element, MoveType, ReactionType, BuffCategory, BuffEffect
 from mechanics.buff_system import Buff, BurningBuff
 from .wolfguard_constants import SKILL_MULTIPLIERS, FRAME_DATA, MECHANICS
-
+from core.damage_helper import deal_damage
+from core.stats import CombatStats, Attributes, StatKey
+from simulation.event_system import EventType
 
 class ScorchingFangBuff(Buff):
     """狼卫天赋：灼热獠牙 - 提供伤害加成"""
@@ -20,8 +21,8 @@ class ScorchingFangBuff(Buff):
         self.bonus = MECHANICS['passive_dmg_bonus']
 
     def modify_stats(self, stats: dict):
-        if "dmg_bonus" in stats:
-            stats["dmg_bonus"] += self.bonus
+        if StatKey.DMG_BONUS in stats:
+            stats[StatKey.DMG_BONUS] += self.bonus
 
 
 class WolfguardSim(BaseActor):
@@ -37,107 +38,66 @@ class WolfguardSim(BaseActor):
         # 主副属性
         self.main_attr = "strength"
         self.sub_attr = "agility"
+        
+        # 技能CD - 移除 CD 机制
+        # self.skill_cd = 120
+        # self.ult_cd = 300
 
-    # ===== 伤害计算 =====
-    def _deal_damage(self, mv, move_type, apply_element=True):
-        """统一伤害计算方法"""
-        panel = self.get_current_panel()
-        extra_mv = 0
-        is_reaction = False
+        # 订阅事件
+        # 监听反应触发 (主要用于非 Buff 类反应，或作为补充)
+        self.engine.event_bus.subscribe(EventType.REACTION_TRIGGERED, self._on_reaction_trigger)
+        # 监听 Buff 施加 (主要用于燃烧、附着等 Buff)
+        self.engine.event_bus.subscribe(EventType.BUFF_APPLIED, self._on_buff_applied)
 
-        if apply_element:
-            res = self.target.reaction_mgr.apply_hit(
-                Element.HEAT,
-                attacker_atk=panel['final_atk'],
-                attacker_tech=panel['technique_power'],
-                attacker_lvl=panel['level'],
-                attacker_name=self.name
-            )
-            extra_mv = res.extra_mv
-            is_reaction = extra_mv > 0
-            if res.log_msg:
-                self.engine.log(f"   [{res.log_msg}]")
-            if res.reaction_type == ReactionType.BURNING:
+    # ===== 事件监听 =====
+    def _on_buff_applied(self, event):
+        """监听 Buff 施加事件"""
+        buff_name = event.get("buff_name")
+        tags = event.get("tags", [])
+        buff_instance = event.get("buff_instance")
+        
+        # 1. QTE触发条件：检测到元素附着 (敌人被施加燃烧/导电/冻结/腐蚀)
+        # 只要敌人身上出现这些Buff，QTE就绪
+        is_anomaly = False
+        if ReactionType.BURNING in tags: is_anomaly = True
+        elif ReactionType.CONDUCTIVE in tags: is_anomaly = True
+        elif ReactionType.FROZEN in tags: is_anomaly = True
+        elif ReactionType.CORROSION in tags: is_anomaly = True
+        
+        if is_anomaly:
+            self.qte_ready_timer = 30
+            self.engine.log(f"   [狼卫] 检测到元素异常Buff({buff_name})，爆裂手雷就绪！")
+            
+        # 2. 天赋一：灼热獠牙
+        # 条件：狼卫自己触发了燃烧 (通过技能或普攻)
+        # 检查是否是燃烧Buff，且来源是自己
+        if ReactionType.BURNING in tags:
+            # 检查来源
+            source_name = "未知"
+            if buff_instance and hasattr(buff_instance, 'source_name'):
+                source_name = buff_instance.source_name
+            
+            if source_name == self.name:
                 self._trigger_passive_one()
 
-        # 分别计算基础伤害和反应伤害
-        base_dmg = DamageEngine.calculate(
-            panel, self.target.get_defense_stats(),
-            mv, Element.HEAT, move_type=move_type
-        )
-
-        reaction_dmg = 0
-        if extra_mv > 0:
-            reaction_dmg = DamageEngine.calculate(
-                panel, self.target.get_defense_stats(),
-                extra_mv, Element.HEAT, move_type=move_type
-            )
-
-        total_dmg = base_dmg + reaction_dmg
-        self.target.take_damage(total_dmg)
-        self.engine.log(f"   [伤害] Hit造成伤害: {total_dmg}")
-
-        # 记录到统计系统
-        if hasattr(self.engine, 'statistics'):
-            import random
-            crit_rate = panel.get('crit_rate', 0.0)
-            is_crit = random.random() < crit_rate
-
-            # 记录基础技能伤害
-            self.engine.statistics.record_damage(
-                tick=self.engine.tick,
-                source=self.name,
-                target=self.target.name,
-                skill_name=self.current_action.name if self.current_action else "未知技能",
-                damage=base_dmg,
-                element=Element.HEAT,
-                move_type=move_type,
-                is_crit=is_crit,
-                is_reaction=False
-            )
-
-            # 如果有反应伤害，单独记录
-            if reaction_dmg > 0:
-                self.engine.statistics.record_damage(
-                    tick=self.engine.tick,
-                    source=self.name,
-                    target=self.target.name,
-                    skill_name="元素反应",
-                    damage=reaction_dmg,
-                    element=Element.HEAT,
-                    move_type=MoveType.OTHER,
-                    is_crit=False,
-                    is_reaction=True
-                )
+    def _on_reaction_trigger(self, event):
+        """监听反应触发"""
+        # 之前的逻辑已迁移到 _on_buff_applied
+        # 这里保留监听 ATTACH 反应作为 QTE 的冗余触发 (防止某些情况下只触发ATTACH没生成Buff?)
+        # 但通常 ATTACH 会伴随状态变化。如果题目要求只监听 Buff，我们可以移除这里。
+        # 为了稳健，暂时保留 ATTACH 监听 QTE，但移除 Passive 监听。
+        
+        reaction_type = event.get("reaction_type")
+        
+        # QTE触发条件：REACTION_TRIGGERED 里的 ATTACH 也是一种附着
+        if reaction_type == ReactionType.ATTACH:
+            self.qte_ready_timer = 30
+            self.engine.log(f"   [狼卫] 检测到元素附着(Attach反应)，爆裂手雷就绪！")
 
     # ===== 天赋机制 =====
     def _trigger_passive_one(self):
         """天赋一：触发灼热獠牙"""
         self.buffs.add_buff(ScorchingFangBuff(), self.engine)
-
-    # ===== 命令解析 =====
-    def parse_command(self, cmd_str: str):
-        parts = cmd_str.split()
-        cmd = parts[0].lower()
-        if cmd == "wait":
-            return Action(f"等待", int(float(parts[1])*10), [])
-        if cmd.startswith("a") and cmd[1:].isdigit():
-            return self.create_normal_attack(int(cmd[1:]) - 1)
-        if cmd in ["skill", "e"]:
-            if self.cooldowns.get("skill", 0) > 0:
-                return None
-            self.cooldowns["skill"] = 120  # CD设置移到这里
-            return self.create_skill()
-        if cmd in ["ult", "q"]:
-            if self.cooldowns.get("ult", 0) > 0:
-                return None
-            self.cooldowns["ult"] = 300
-            return self.create_ult()
-        if cmd == "qte":
-            if self.target.reaction_mgr.has_magic_attachment():
-                return self.create_qte()
-            return None
-        return Action("未知", 0, [])
 
     # ===== 技能工厂 =====
     def create_normal_attack(self, seq_index):
@@ -148,8 +108,18 @@ class WolfguardSim(BaseActor):
         f_data = frames[idx]
 
         def perform():
-            self._deal_damage(mv, MoveType.NORMAL, apply_element=True)
-        return Action(f"普攻{seq_index+1}", f_data['total'], [DamageEvent(f_data['hit'], perform)])
+            deal_damage(
+                self.engine, self, self.target,
+                skill_name=f"普攻{seq_index+1}",
+                skill_mv=mv,
+                element=Element.HEAT,
+                move_type=MoveType.NORMAL
+            )
+            # 普攻第4段（索引3）造成失衡
+            if seq_index == 3:
+                self.target.apply_stagger(18, self.engine)
+
+        return Action(f"普攻{seq_index+1}", f_data['total'], [DamageEvent(f_data['hit'], perform)], move_type=MoveType.NORMAL)
 
     def create_skill(self):
         f_data = FRAME_DATA["skill"]
@@ -157,7 +127,6 @@ class WolfguardSim(BaseActor):
         context = {"consumed": False}
 
         def hit_base():
-            # CD已经在parse_command中设置，这里移除
             mv = SKILL_MULTIPLIERS["skill_base"]
             has_burn = self.target.buffs.consume_tag(ReactionType.BURNING)
             has_conduct = self.target.buffs.consume_tag(ReactionType.CONDUCTIVE)
@@ -166,17 +135,40 @@ class WolfguardSim(BaseActor):
                 context["consumed"] = True
                 self.engine.log(f"   [战技] 成功消耗异常状态！")
                 refund = MECHANICS["skill_refund"]
-                self.cooldowns["skill"] = max(0, self.cooldowns["skill"] - refund)
-                self.engine.log(f"   [天赋] CD减少 {refund/10.0}秒")
-                self._deal_damage(mv, MoveType.SKILL, apply_element=False)
+                # self.cooldowns["skill"] = max(0, self.cooldowns["skill"] - refund)
+                self.engine.log(f"   [天赋] CD减少 {refund/10.0}秒 (已移除CD机制)")
+                # 消耗状态时不施加附着，使用新添加的 can_attach 参数
+                deal_damage(
+                    self.engine, self, self.target,
+                    skill_name="灼热弹痕",
+                    skill_mv=mv,
+                    element=Element.HEAT,
+                    move_type=MoveType.SKILL,
+                    attachments=[]
+                )
+                # 移除之前的 Hack 代码
             else:
-                self._deal_damage(mv, MoveType.SKILL, apply_element=True)
+                deal_damage(
+                    self.engine, self, self.target,
+                    skill_name="灼热弹痕",
+                    skill_mv=mv,
+                    element=Element.HEAT,
+                    move_type=MoveType.SKILL
+                )
 
         def hit_extra():
             if context["consumed"]:
                 mv = SKILL_MULTIPLIERS["skill_extra"]
                 self.engine.log(f"   >>> [战技] 追加射击！")
-                self._deal_damage(mv, MoveType.SKILL, apply_element=False)
+                # 追加射击造成大量火伤。描述没说是否附着，通常追加攻击也是火伤。
+                # 假设也会附着（除非特别说明）。
+                deal_damage(
+                    self.engine, self, self.target,
+                    skill_name="灼热弹痕(追加)",
+                    skill_mv=mv,
+                    element=Element.HEAT,
+                    move_type=MoveType.SKILL
+                )
 
         events.append(DamageEvent(f_data['hit'], hit_base))
         events.append(DamageEvent(f_data['extra_hit'], hit_extra))
@@ -185,19 +177,27 @@ class WolfguardSim(BaseActor):
     def create_ult(self):
         f_data = FRAME_DATA["ult"]
         events = []
+        # 注意：constants里只定义了 "interval": 3, "total": 25。没有定义 "hit"。
+        # 假设 hit 从第5帧开始。
+        start_time = 5
+        
         for i in range(5):
             def hit(idx=i):
                 mv = SKILL_MULTIPLIERS["ult_hit"]
-                DamageEngine.calculate(
-                    self.get_current_panel(), self.target.get_defense_stats(), 
-                    mv, Element.HEAT, move_type=MoveType.ULTIMATE
+                deal_damage(
+                    self.engine, self, self.target,
+                    skill_name="狼之怒",
+                    skill_mv=mv,
+                    element=Element.HEAT,
+                    move_type=MoveType.ULTIMATE
                 )
                 if idx == 4:
                     self.engine.log("   [终结技] 强制施加 <燃烧>")
                     burn_dmg = self.get_current_panel()['final_atk'] * 0.2
                     self.target.buffs.add_buff(BurningBuff(burn_dmg), self.engine)
+                    # 强制施加也触发天赋
                     self._trigger_passive_one()
-            events.append(DamageEvent(f_data['hit'] + i*f_data['interval'], hit))
+            events.append(DamageEvent(start_time + i*f_data['interval'], hit))
         return Action("狼之怒", f_data['total'], events)
 
     def create_qte(self):
@@ -206,6 +206,12 @@ class WolfguardSim(BaseActor):
 
         def perform():
             self.engine.log("   [连携技] 爆裂手雷投掷！")
-            self._deal_damage(mv, MoveType.QTE, apply_element=True)
+            deal_damage(
+                self.engine, self, self.target,
+                skill_name="爆裂手雷",
+                skill_mv=mv,
+                element=Element.HEAT,
+                move_type=MoveType.QTE
+            )
 
-        return Action("爆裂手雷", f_data['total'], [DamageEvent(f_data['hit'], perform)])
+        return Action("爆裂手雷", f_data['total'], [DamageEvent(f_data['hit'], perform)], move_type=MoveType.QTE)

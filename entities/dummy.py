@@ -2,6 +2,9 @@ from simulation.engine import SimEngine
 from mechanics.buff_system import BuffManager
 from mechanics.reaction_manager import ReactionManager
 
+from core.enums import Element, PhysAnomalyType
+from core.stats import CombatStats, Attributes, StatKey
+
 class DummyEnemy:
     def __init__(self, engine, name, defense=500, resistances=None):
         self.name = name
@@ -44,33 +47,28 @@ class DummyEnemy:
             engine.log(f"   >>> [{self.name}] 进入失衡状态！")
 
     def get_defense_stats(self):
+        """获取防御计算所需的属性快照"""
+        # 1. 基础属性
         stats = {
-            # 易伤区
-            "defense": self.defense,
-            "vulnerability": 0.0,       # 通用易伤
-            "magic_vulnerability": 0.0,    # 元素易伤
-            "physical_vulnerability": 0.0, # 物理易伤
-            "electric_vulnerability": 0.0, # 电磁易伤
-            "heat_vulnerability": 0.0,     # 灼热易伤
-            "cold_vulnerability": 0.0,     # 冰霜易伤
-            "nature_vulnerability": 0.0,   # 自然易伤
-            # 脆弱区
-            "fragility": 0.0,           # 通用脆弱
-            "heat_fragility": 0.0,      # 灼热脆弱
-            "electric_fragility": 0.0,  # 电磁脆弱
-            "cold_fragility": 0.0,      # 冰霜脆弱
-            "nature_fragility": 0.0,    # 自然脆弱
+            StatKey.DEFENSE: self.defense,
+            StatKey.RES_PEN: 0.0, # 防御方通常没有穿透，但为了通用性
+            # 基础抗性
+            StatKey.PHYS_RES: self.resistances.get(Element.PHYSICAL, 0.0),
+            StatKey.MAGIC_RES: self.resistances.get("magic", 0.0), # 通用法术抗性
+            "heat_res": self.resistances.get(Element.HEAT, 0.0),
+            "electric_res": self.resistances.get(Element.ELECTRIC, 0.0),
+            "frost_res": self.resistances.get(Element.FROST, 0.0),
+            "nature_res": self.resistances.get(Element.NATURE, 0.0),
+            
+            # 状态标记
+            "is_staggered": self.is_staggered
         }
-
-        # 应用失衡易伤
-        if self.is_staggered:
-            stagger_vuln = getattr(self.engine.config, 'stagger_vuln_multiplier', 1.3) - 1.0
-            stats['vulnerability'] += stagger_vuln
-
-        for k, v in self.resistances.items():
-            stats[f"{k}_res"] = v
-
-        return self.buffs.apply_stats(stats)
+        
+        # 2. 应用 Buff
+        # Dummy 的 buffs 会修改上述 stats，例如添加易伤、削减抗性
+        stats = self.buffs.apply_stats(stats)
+        
+        return stats
 
     def take_damage(self, amount):
         self.total_damage_taken += amount

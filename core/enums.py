@@ -9,7 +9,6 @@ class Element(Enum):
 
 class PhysAnomalyType(Enum):
     NONE = "none"
-    BREAK = "break"
     IMPACT = "impact"
     SHATTER = "shatter"
     LAUNCH = "launch"
@@ -17,6 +16,9 @@ class PhysAnomalyType(Enum):
 
 class MoveType(Enum):
     NORMAL = "normal"
+    HEAVY = "heavy"          # 重击
+    PLUNGE = "plunge"        # 下落攻击
+    EXECUTION = "execution"  # 处决攻击
     SKILL = "skill"
     ULTIMATE = "ultimate"
     QTE = "qte"
@@ -40,6 +42,7 @@ class BuffEffect(Enum):
     DOT = "dot"                      # 持续伤害
     CC = "cc"                        # 控制效果
     ELEMENTAL_REACTION = "elemental_reaction"  # 元素反应状态
+    OTHER = "other"
 
 # 【新增】反应类型常量
 class ReactionType(Enum):

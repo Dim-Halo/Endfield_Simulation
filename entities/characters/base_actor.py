@@ -1,8 +1,11 @@
 from collections import deque
+from dataclasses import asdict
 from simulation.engine import SimEngine
 from simulation.action import Action
 from mechanics.buff_system import BuffManager
 from simulation.event_system import EventType, EventBuilder
+from core.enums import MoveType
+from core.stats import CombatStats, Attributes, StatKey
 
 class BaseActor:
     def __init__(self, name, engine: SimEngine):
@@ -19,58 +22,38 @@ class BaseActor:
 
         self.main_attr = None # e.g. "intelligence"
         self.sub_attr = None  # e.g. "willpower"
+
+        # QTE 就绪计时器 (通用机制)
+        self.qte_ready_timer = 0
     
     def get_current_panel(self):
-        if not self.main_attr or not self.sub_attr:
-            raise ValueError(f"{self.name} 未定义主/副属性！")
+        """
+        获取当前面板属性（计算 Buff 后的快照）
+        """
+        # 1. 基础属性
+        panel = asdict(self.base_stats)
         
-        # 1. 所有可能的属性字段 (Snapshot)
-        stats = {
-            # 基础与成长
-            "level": self.base_stats.level,
-            "technique_power": self.base_stats.technique_power,
-            
-            # 攻击力构成
-            "base_atk": self.base_stats.base_atk + self.base_stats.weapon_atk,
-            "atk_pct": self.base_stats.atk_pct,
-            "flat_atk": self.base_stats.flat_atk,
-            
-            # 增伤与暴击
-            "dmg_bonus": self.base_stats.dmg_bonus,
-            "crit_rate": self.base_stats.crit_rate,
-            "crit_dmg": self.base_stats.crit_dmg,
-            "res_pen": self.base_stats.res_pen,
-            "amplification": self.base_stats.amplification,
-            
-            # 特定增伤
-            "normal_dmg_bonus": self.base_stats.normal_dmg_bonus,
-            "skill_dmg_bonus": self.base_stats.skill_dmg_bonus,
-            "ult_dmg_bonus": self.base_stats.ult_dmg_bonus,
-            "qte_dmg_bonus": self.base_stats.qte_dmg_bonus,
-            
-            # 元素增伤
-            "heat_dmg_bonus": self.base_stats.heat_dmg_bonus,
-            "electric_dmg_bonus": self.base_stats.electric_dmg_bonus,
-            "frost_dmg_bonus": self.base_stats.frost_dmg_bonus,
-            "nature_dmg_bonus": self.base_stats.nature_dmg_bonus,
-            "physical_dmg_bonus": self.base_stats.physical_dmg_bonus,
-            
-            # 其他
-            "heal_bonus": self.base_stats.heal_bonus,
-        }
+        # 计算主副属性带来的攻击力/生命加成（如果有相关机制）
+        # 这里暂时只处理属性乘区
+        
+        # 2. 预处理 Hook (子类可覆盖)
+        self._modify_panel_before_buffs(panel)
 
-        # 2. 钩子：允许子类在Buff计算前修改面板 (例如基于层数的被动)
-        self._modify_panel_before_buffs(stats)
+        # 3. 应用自身 Buff
+        self.buffs.apply_stats(panel)
 
-        # 3. 应用 Buff
-        stats = self.buffs.apply_stats(stats)
+        # 4. 计算最终攻击力 (Final Atk)
+        # 公式: (基础攻击 + 武器攻击 + 固定攻击) * (1 + 攻击百分比)
+        base = panel[StatKey.BASE_ATK] + panel[StatKey.WEAPON_ATK] + panel[StatKey.FLAT_ATK]
+        atk_mult = 1.0 + panel[StatKey.ATK_PCT]
+        panel[StatKey.FINAL_ATK] = base * atk_mult
+
+        # 5. 计算源石技艺强度 (如果有)
+        # 公式: (基础攻击 * 技艺倍率) * (1 + 技艺百分比) 
+        # (简化公式，具体视设定而定)
+        # panel['technique_power'] += panel['final_atk'] * panel['tech_pct']
         
-        # 4. 计算 Final ATK
-        base_zone = stats["base_atk"] * (1 + stats["atk_pct"]) + stats["flat_atk"]
-        attr_mult = self.base_stats.get_attr_multiplier(self.attrs, self.main_attr, self.sub_attr)
-        stats["final_atk"] = base_zone * attr_mult
-        
-        return stats
+        return panel
     
     def _modify_panel_before_buffs(self, stats):
         """子类可选重写"""
@@ -85,6 +68,10 @@ class BaseActor:
         for skill in list(self.cooldowns.keys()):
             if self.cooldowns[skill] > 0:
                 self.cooldowns[skill] -= 1
+        
+        # QTE 计时器递减
+        if self.qte_ready_timer > 0:
+            self.qte_ready_timer -= 1
 
         if self.is_busy and self.current_action:
             self._process_action()
@@ -117,6 +104,15 @@ class BaseActor:
 
     def start_action(self, action: Action):
         if self.is_busy: return False
+        
+        # 检查并消耗技力
+        if action.move_type == MoveType.SKILL:
+            if not self.engine.party_manager.try_consume_sp(100):
+                self.engine.log(f"[{self.name}] 技力不足 ({self.engine.party_manager.get_sp()}/100), 无法释放战技: {action.name}", level="WARNING")
+                return False
+            else:
+                self.engine.log(f"[{self.name}] 消耗100技力, 剩余: {self.engine.party_manager.get_sp()}")
+
         self.is_busy = True
         self.current_action = action
         self.action_timer = 0
@@ -156,4 +152,56 @@ class BaseActor:
                 self.action_queue.popleft()
         
     def parse_command(self, cmd_str):
-        raise NotImplementedError
+        """通用指令解析器"""
+        parts = cmd_str.split()
+        cmd = parts[0].lower()
+        
+        # 1. 等待指令
+        if cmd == "wait":
+            duration = float(parts[1]) if len(parts) > 1 else 1.0
+            return Action(f"等待", int(duration * 10), [])
+            
+        # 2. 普攻指令 (a1, a2, ...)
+        if cmd.startswith("a") and cmd[1:].isdigit():
+            idx = int(cmd[1:])
+            if hasattr(self, 'create_normal_attack'):
+                return self.create_normal_attack(idx - 1)
+        
+        # 3. 战技指令 (skill, e)
+        if cmd in ["skill", "e"]:
+            # 移除 CD 检查
+            # if self.cooldowns.get("skill", 0) > 0:
+            #    return None
+            
+            if hasattr(self, 'create_skill'):
+                # 不再设置 CD
+                # skill_cd = getattr(self, 'skill_cd', 120)
+                # self.cooldowns["skill"] = skill_cd
+                return self.create_skill()
+        
+        # 4. 终结技指令 (ult, q)
+        if cmd in ["ult", "q"]:
+            # 移除 CD 检查
+            # if self.cooldowns.get("ult", 0) > 0:
+            #    return None
+                
+            # 不再设置 CD
+            # ult_cd = getattr(self, 'ult_cd', 300)
+            # self.cooldowns["ult"] = ult_cd
+            return self.create_ult()
+            
+        # 5. QTE 指令
+        if cmd == "qte":
+            if self.qte_ready_timer > 0:
+                self.qte_ready_timer = 0
+                if hasattr(self, 'create_qte'):
+                    return self.create_qte()
+            return None
+
+        return Action("未知", 0, [])
+
+    # 子类需实现以下工厂方法
+    def create_normal_attack(self, idx): raise NotImplementedError
+    def create_skill(self): raise NotImplementedError
+    def create_ult(self): raise NotImplementedError
+    def create_qte(self): raise NotImplementedError

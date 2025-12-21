@@ -1,4 +1,5 @@
 from .enums import Element, MoveType
+from .stats import StatKey
 
 class DamageEngine:
     @staticmethod
@@ -13,31 +14,38 @@ class DamageEngine:
         # ============================================================
         # 1. 基础伤害区
         # ============================================================
-        atk = attacker_stats['final_atk']
+        atk = attacker_stats[StatKey.FINAL_ATK]
         base_dmg = atk * (skill_mv / 100.0)
 
         # ============================================================
         # 2. 暴击区
         # ============================================================
-        c_rate = min(1.0, max(0.0, attacker_stats.get('crit_rate', 0.0)))
-        c_dmg = attacker_stats.get('crit_dmg', 0.5)
+        c_rate = min(1.0, max(0.0, attacker_stats.get(StatKey.CRIT_RATE, 0.0)))
+        c_dmg = attacker_stats.get(StatKey.CRIT_DMG, 0.5)
         crit_mult = 1.0 + (c_rate * c_dmg)
 
         # ============================================================
         # 3. 伤害加成区（加算）
         # ============================================================
-        base_bonus = attacker_stats.get('dmg_bonus', 0.0)
+        base_bonus = attacker_stats.get(StatKey.DMG_BONUS, 0.0)
 
         # 招式增伤
         move_bonus = 0.0
         if move_type == MoveType.NORMAL:
-            move_bonus = attacker_stats.get('normal_dmg_bonus', 0.0)
+            move_bonus = attacker_stats.get(StatKey.NORMAL_DMG_BONUS, 0.0)
+        elif move_type == MoveType.HEAVY:
+            # 重击通常享受普攻加成，也可以有独立加成
+            move_bonus = attacker_stats.get(StatKey.NORMAL_DMG_BONUS, 0.0) + attacker_stats.get('heavy_dmg_bonus', 0.0)
+        elif move_type == MoveType.PLUNGE:
+            move_bonus = attacker_stats.get('plunge_dmg_bonus', 0.0)
+        elif move_type == MoveType.EXECUTION:
+            move_bonus = attacker_stats.get('execution_dmg_bonus', 0.0)
         elif move_type == MoveType.SKILL:
-            move_bonus = attacker_stats.get('skill_dmg_bonus', 0.0)
+            move_bonus = attacker_stats.get(StatKey.SKILL_DMG_BONUS, 0.0)
         elif move_type == MoveType.ULTIMATE:
-            move_bonus = attacker_stats.get('ult_dmg_bonus', 0.0)
+            move_bonus = attacker_stats.get(StatKey.ULT_DMG_BONUS, 0.0)
         elif move_type == MoveType.QTE:
-            move_bonus = attacker_stats.get('qte_dmg_bonus', 0.0)
+            move_bonus = attacker_stats.get(StatKey.QTE_DMG_BONUS, 0.0)
 
         # 元素增伤
         elem_bonus = attacker_stats.get(f"{element.value}_dmg_bonus", 0.0)
@@ -56,20 +64,20 @@ class DamageEngine:
         dmg_reduction_mult = 1.0 - dmg_reduction
 
         # ============================================================
-        # 5. 易伤区（Vulnerability - 加算）
+        # 5. 易伤区（Vulnerability - 加算） 
         # ============================================================
-        vuln = target_stats.get('vulnerability', 0.0)
+        vuln = target_stats.get(StatKey.VULNERABILITY, 0.0)
         if element != Element.PHYSICAL:
-            vuln += target_stats.get('magic_vulnerability', 0.0)
+            vuln += target_stats.get(StatKey.MAGIC_VULN, 0.0)
         else:
-            vuln += target_stats.get('physical_vulnerability', 0.0)
+            vuln += target_stats.get(StatKey.PHYS_VULN, 0.0)
         vuln += target_stats.get(f"{element.value}_vulnerability", 0.0)
         vuln_mult = 1.0 + vuln
 
         # ============================================================
         # 6. 增幅区
         # ============================================================
-        amp_mult = 1.0 + attacker_stats.get('amplification', 0.0)
+        amp_mult = 1.0 + attacker_stats.get(StatKey.AMPLIFICATION, 0.0)
 
         # ============================================================
         # 7. 庇护区（独立乘区）
@@ -80,14 +88,14 @@ class DamageEngine:
         # ============================================================
         # 8. 脆弱区（Fragility - 独立乘区）
         # ============================================================
-        fragility = target_stats.get('fragility', 0.0)
+        fragility = target_stats.get(StatKey.FRAGILITY, 0.0)
         fragility += target_stats.get(f"{element.value}_fragility", 0.0)
         fragility_mult = 1.0 + fragility
 
         # ============================================================
         # 9. 防御区
         # ============================================================
-        defense = max(0, target_stats.get('defense', 0))
+        defense = max(0, target_stats.get(StatKey.DEFENSE, 0))
         def_const = 100.0
         def_mult = def_const / (def_const + defense)
 
@@ -107,7 +115,7 @@ class DamageEngine:
         # ============================================================
         res_key = f"{element.value}_res"
         raw_res = target_stats.get(res_key, 0.0)
-        res_pen = attacker_stats.get('res_pen', 0.0)
+        res_pen = attacker_stats.get(StatKey.RES_PEN, 0.0)
         final_res = max(0.0, raw_res - res_pen)
         res_mult = 1.0 - final_res
 
@@ -119,7 +127,7 @@ class DamageEngine:
         # ============================================================
         # 14. 特殊加成区
         # ============================================================
-        special_mult = 1.0 + attacker_stats.get('special_bonus', 0.0)
+        special_mult = 1.0 + attacker_stats.get(StatKey.SPECIAL_BONUS, 0.0)
 
         # ============================================================
         # 最终汇总（严格按照14个乘区的顺序）

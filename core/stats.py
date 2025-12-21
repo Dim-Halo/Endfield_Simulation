@@ -9,6 +9,63 @@ class Attributes:
     intelligence: int = 0
     willpower: int = 0
 
+class StatKey:
+    """属性键名常量"""
+    LEVEL = "level"
+    BASE_HP = "base_hp"
+    BASE_DEF = "base_def"
+    BASE_ATK = "base_atk"
+    WEAPON_ATK = "weapon_atk"
+    ATK_PCT = "atk_pct"
+    FLAT_ATK = "flat_atk"
+    TECH_POWER = "technique_power"
+    TECH_PCT = "tech_pct"
+    
+    # 最终属性 (CombatStats不直接存，但在 get_current_panel 中计算)
+    FINAL_ATK = "final_atk"
+    
+    # 增伤
+    DMG_BONUS = "dmg_bonus"
+    NORMAL_DMG_BONUS = "normal_dmg_bonus"
+    SKILL_DMG_BONUS = "skill_dmg_bonus"
+    ULT_DMG_BONUS = "ult_dmg_bonus"
+    QTE_DMG_BONUS = "qte_dmg_bonus"
+    
+    # 元素增伤
+    HEAT_DMG_BONUS = "heat_dmg_bonus"
+    ELECTRIC_DMG_BONUS = "electric_dmg_bonus"
+    FROST_DMG_BONUS = "frost_dmg_bonus"
+    NATURE_DMG_BONUS = "nature_dmg_bonus"
+    PHYSICAL_DMG_BONUS = "physical_dmg_bonus"
+    
+    # 暴击
+    CRIT_RATE = "crit_rate"
+    CRIT_DMG = "crit_dmg"
+    
+    # 穿透
+    RES_PEN = "res_pen"
+    
+    # 增幅
+    AMPLIFICATION = "amplification"
+    SPECIAL_BONUS = "special_bonus"
+    HEAL_BONUS = "heal_bonus"
+    
+    # 防御/易伤属性 (在 get_defense_stats 中使用)
+    DEFENSE = "defense"
+    PHYS_RES = "physical_res"
+    MAGIC_RES = "magic_res"
+    VULNERABILITY = "vulnerability"
+    PHYS_VULN = "physical_vulnerability"
+    MAGIC_VULN = "magic_vulnerability"
+    FRAGILITY = "fragility"
+    
+    # 元素脆弱
+    HEAT_FRAGILITY = "heat_fragility"
+    ELECTRIC_FRAGILITY = "electric_fragility"
+    FROST_FRAGILITY = "frost_fragility"
+    NATURE_FRAGILITY = "nature_fragility"
+    PHYSICAL_FRAGILITY = "physical_fragility"
+
 @dataclass
 class CombatStats:
     # --- 1. 基础区 ---
@@ -24,7 +81,8 @@ class CombatStats:
 
     # 源石技艺强度
     technique_power: float = 0.0
-    
+    tech_pct: float = 0.0      # 源石技艺强度%
+
     # --- 2. 增伤区 (Damage Bonus) ---
     # 全区增伤
     dmg_bonus: float = 0.0
@@ -76,22 +134,29 @@ class CombatStats:
     def calculate_phys_res(self, attrs: Attributes):
         """
         计算物理抗性 (敏捷衍生)
-        公式: 敏捷/10, 四舍五入 (作为百分比)
-        例如: 95敏捷 -> 9.5 -> 10 -> 10% -> 0.10
+        公式: 100 - 100 / (0.001 * 敏捷 + 1) (点数)
+        返回百分比 (0.0 - 1.0)
         """
-        # Python的round是银行家舍入(偶数舍入)，为了符合游戏常识实现四舍五入
-        val = attrs.agility / 10.0
-        rounded_val = int(val + 0.5) 
-        return rounded_val / 100.0
+        if attrs.agility == 0:
+            return 0.0
+        
+        # 计算抗性点数
+        res_points = 100.0 - (100.0 / (0.001 * attrs.agility + 1.0))
+        # 转化为百分比 (1点 = 1%)
+        return res_points / 100.0
 
     def calculate_magic_res(self, attrs: Attributes):
         """
         计算法术抗性 (智识衍生)
-        公式: 智识/10, 四舍五入 (作为百分比)
+        公式: 100 - 100 / (0.001 * 智识 + 1) (点数)
+        返回百分比 (0.0 - 1.0)
         """
-        val = attrs.intelligence / 10.0
-        rounded_val = int(val + 0.5)
-        return rounded_val / 100.0
+        if attrs.intelligence == 0:
+            return 0.0
+            
+        # 计算抗性点数
+        res_points = 100.0 - (100.0 / (0.001 * attrs.intelligence + 1.0))
+        return res_points / 100.0
 
     def calculate_healing_received(self, attrs: Attributes):
         """

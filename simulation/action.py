@@ -7,12 +7,15 @@ class DamageEvent:
     damage_func: Callable  # 回调
     name: str = "Hit"
 
+from core.enums import MoveType
+
 class Action:
-    def __init__(self, name: str, duration: int, events: List[DamageEvent] = None):
+    def __init__(self, name: str, duration: int, events: List[DamageEvent] = None, move_type: MoveType = MoveType.OTHER):
         self.name = name
         self.duration = duration
         self.events = sorted(events or [], key=lambda x: x.time_offset)
         self.processed_event_index = 0
+        self.move_type = move_type
 
     def reset(self):
         self.processed_event_index = 0

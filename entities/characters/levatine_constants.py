@@ -11,7 +11,7 @@ SKILL_MULTIPLIERS = {
     "skill_dot": 14,
     
     # 连携技
-    "qte": 563
+    "qte": 540
 }
 
 FRAME_DATA = {
@@ -30,5 +30,6 @@ FRAME_DATA = {
 
 MECHANICS = {
     "molten_max_stacks": 4,
-    "heat_res_shred": 0.20
+    "heat_res_shred": 0.20,
+    "qte_energy_gain": [0, 25, 30, 35] # 0个, 1个, 2个, 3个+
 }

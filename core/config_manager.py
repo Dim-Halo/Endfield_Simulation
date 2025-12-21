@@ -50,10 +50,14 @@ class ConfigManager:
 
         # 反应基础系数
         self.reaction_coefficients = {
-            "conductive_base_vuln": 0.08,     # 导电基础易伤
+            "conductive_base_vuln": 0.08,     # 导电基础易伤 (0.08 + 0.04*1 = 0.12)
             "conductive_per_level": 0.04,     # 导电每层增加
-            "corrosion_base_shred": 0.02,     # 腐蚀基础削抗
-            "corrosion_per_level": 0.01,      # 腐蚀每层增加
+            "corrosion_base_shred": 0.024,    # 腐蚀基础削抗 (0.024 + 0.012*1 = 0.036)
+            "corrosion_per_level": 0.012,     # 腐蚀每层增加
+            "corrosion_tick_base": 0.0056,    # 腐蚀每秒削抗基础 (0.0056 + 0.0028*1 = 0.0084)
+            "corrosion_tick_level": 0.0028,   # 腐蚀每秒削抗每层
+            "corrosion_max_base": 0.08,       # 腐蚀最大削抗基础 (0.08 + 0.04*1 = 0.12)
+            "corrosion_max_level": 0.04,      # 腐蚀最大削抗每层
             "shatter_armor_base": 0.08,       # 碎甲基础易伤
             "shatter_armor_per_level": 0.03,  # 碎甲每层增加
             "frozen_base_duration": 6.0,      # 冻结基础时长
@@ -139,7 +143,7 @@ class ConfigManager:
         }
 
     def get_reaction_mv(self, reaction_type: str, level: int = 0,
-                       tech_power: float = 0.0, attacker_lvl: int = 80,
+                       tech_power: float = 0.0, attacker_lvl: int = 90,
                        is_magic: bool = True) -> float:
         """
         计算反应倍率（封装通用计算逻辑）
