@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 日志和临时文件
+*.log
+*.tmp
+*.cache
+
+# Git
+.git/
+.gitignore
+
+# 配置文件
+config.json
+config.yaml
+custom_config.*
+
+# 输出文件
+report.txt
+output/
+*.csv
+
+# Claude
+.claude/
+CLAUDE.md
+.trae/
+
+# Node modules (如果在根目录有)
+node_modules/
+
+# 测试覆盖率
+.coverage
+htmlcov/
+.pytest_cache/

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { getActionDuration, preloadCharacterConstants } from '../utils/constants';
-import { apiClient } from '../api/client';
+import { apiClient, operatorConfigApi, OperatorConfig, weaponApi, Weapon } from '../api/client';
 
 export type CharacterName = "无" | "莱瓦汀" | "狼卫" | "艾尔黛拉" | "安塔尔" | "管理员" | "陈千语" | "大潘" | "骏卫";
 export type ActionType = "Skill" | "Ult" | "QTE" | "Attack" | "Wait";
@@ -14,10 +14,22 @@ export interface TimelineAction {
 }
 
 export interface CharacterConfig {
-  name: string; // Relaxed type
+  name: string;
   script: string;
   molten_stacks?: number;
   timeline?: TimelineAction[];
+  weapon_id?: string;
+  // 属性覆盖（直接修改的属性）
+  custom_attrs?: {
+    level?: number;
+    attrs?: {
+      strength?: number;
+      agility?: number;
+      intelligence?: number;
+      willpower?: number;
+    };
+    base_stats?: Record<string, number>;
+  };
 }
 
 export interface EnemyConfig {
@@ -47,18 +59,20 @@ interface SimulationState {
   duration: number;
   enemy: EnemyConfig;
   characters: CharacterConfig[];
-  availableCharacters: string[]; // List of character names from backend
-  defaultScripts: Record<string, string>; // Store scripts from backend
+  availableCharacters: string[];
+  defaultScripts: Record<string, string>;
   result: SimulationResult | null;
   isSimulating: boolean;
-  
+  weapons: Weapon[];
+
   fetchAvailableCharacters: () => Promise<void>;
+  fetchWeapons: () => Promise<void>;
   setDuration: (d: number) => void;
   setEnemy: (e: Partial<EnemyConfig>) => void;
   setCharacter: (index: number, c: Partial<CharacterConfig>) => void;
   setResult: (r: SimulationResult | null) => void;
   setIsSimulating: (s: boolean) => void;
-  
+
   // Timeline Actions
   addTimelineAction: (charIndex: number, action: Omit<TimelineAction, 'id'>) => void;
   updateTimelineAction: (charIndex: number, actionId: string, updates: Partial<TimelineAction>) => void;
@@ -295,10 +309,11 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     dmg_taken_mult_frost: 1.0,
   },
   characters: Array(4).fill(null).map(() => ({ name: "无", script: "", timeline: [] })),
-  availableCharacters: ["无"], // Initial default
+  availableCharacters: ["无"],
   defaultScripts: {},
   result: null,
   isSimulating: false,
+  weapons: [],
 
   fetchAvailableCharacters: async () => {
       try {
@@ -319,12 +334,20 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
           }
       } catch (err) {
           console.error("Failed to fetch characters", err);
-          // Fallback if backend fails
           set({
               availableCharacters: ["无"],
               defaultScripts: {}
            });
       }
+  },
+
+  fetchWeapons: async () => {
+    try {
+      const weapons = await weaponApi.getAll();
+      set({ weapons });
+    } catch (err) {
+      console.error("Failed to fetch weapons", err);
+    }
   },
 
   setDuration: (d) => set({ duration: d }),

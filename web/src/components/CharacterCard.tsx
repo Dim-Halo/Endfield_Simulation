@@ -99,13 +99,17 @@ const CharacterSelector: React.FC<{
 };
 
 export const CharacterCard: React.FC<Props> = ({ index }) => {
-  const { characters, setCharacter, availableCharacters, defaultScripts } = useSimulationStore();
+  const { characters, setCharacter, availableCharacters, defaultScripts, weapons } = useSimulationStore();
   const char = characters[index];
 
   const handleNameChange = (newName: string) => {
     // Look up default script from store (loaded from backend), fallback to empty
     const defaultScript = defaultScripts[newName] || FALLBACK_SCRIPTS[newName] || "";
-    setCharacter(index, { name: newName, script: defaultScript });
+    setCharacter(index, { name: newName, script: defaultScript, weapon_id: undefined });
+  };
+
+  const handleWeaponChange = (weaponId: string) => {
+    setCharacter(index, { weapon_id: weaponId === 'none' ? undefined : weaponId });
   };
 
   return (
@@ -124,13 +128,30 @@ export const CharacterCard: React.FC<Props> = ({ index }) => {
       <div className="flex-1 flex flex-col justify-center">
         {char.name !== "无" ? (
           <div className="flex flex-col gap-4 px-1">
+            {/* 武器选择 */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium text-gray-600">武器</label>
+              <select
+                className="w-full p-2 text-xs border border-gray-200 rounded bg-gray-50 hover:bg-gray-100"
+                value={char.weapon_id || 'none'}
+                onChange={(e) => handleWeaponChange(e.target.value)}
+              >
+                <option value="none">无武器</option>
+                {weapons.map(weapon => (
+                  <option key={weapon.id} value={weapon.id}>
+                    {weapon.name} (ATK+{weapon.weapon_atk})
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {/* Status / Stacks Config */}
             {char.name === "莱瓦汀" && (
               <div className="flex items-center justify-between bg-orange-50 px-3 py-2 rounded border border-orange-100">
                 <span className="text-xs font-medium text-orange-800">熔火层数</span>
                 <div className="flex items-center gap-2">
-                   <input 
-                    type="range" 
+                   <input
+                    type="range"
                     min="0" max="4"
                     value={char.molten_stacks || 0}
                     onChange={(e) => setCharacter(index, { molten_stacks: Number(e.target.value) })}
@@ -140,19 +161,10 @@ export const CharacterCard: React.FC<Props> = ({ index }) => {
                 </div>
               </div>
             )}
-            
-            {/* Placeholder for future specific configs per character */}
-            {char.name !== "莱瓦汀" && (
-               <div className="text-center py-2">
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 rounded-full text-xs border border-gray-100">
-                     <Check className="w-3 h-3" /> 已就绪
-                  </div>
-               </div>
-            )}
-            
+
             {/* Info Snippet */}
             <div className="text-[10px] text-gray-400 text-center mt-auto">
-               可在“排轴编辑”页面调整时间轴
+               可在"排轴编辑"页面调整时间轴
             </div>
           </div>
         ) : (

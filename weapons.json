@@ -1,0 +1,32 @@
+[
+  {
+    "id": "c3c3eeca-0850-4d18-a749-d35dc9737075",
+    "name": "白夜新星",
+    "description": "高级法杖，提供强大的法术增幅",
+    "weapon_atk": 567,
+    "stat_bonuses": {
+      "intelligence": 156,
+      "technique_power": 78,
+      "heat_dmg_bonus": 0.336,
+      "electric_dmg_bonus": 0.336
+    },
+    "effects": [
+      {
+        "effect_type": "on_reaction",
+        "trigger_condition": {
+          "reactions": [
+            "BURNING",
+            "CONDUCTIVE"
+          ]
+        },
+        "buff_stats": {
+          "heat_dmg_bonus": 0.336,
+          "electric_dmg_bonus": 0.336,
+          "technique_power": 70
+        },
+        "duration": 15.0,
+        "description": "对敌方施加燃烧或导电后法术伤害+33.6%，源石技艺强度+70，持续15s"
+      }
+    ]
+  }
+]

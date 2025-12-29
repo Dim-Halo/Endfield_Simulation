@@ -2,28 +2,31 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ConfigView } from './components/ConfigView';
 import { TimelineView } from './components/TimelineView';
 import { SimulationResults } from './components/SimulationResults';
+import { OperatorManagement } from './components/OperatorManagement';
 import { useSimulationStore } from './store/useSimulationStore';
 import { apiClient } from './api/client';
-import { Play, Loader2, Settings, BarChart2, Clock } from 'lucide-react';
+import { Play, Loader2, Settings, BarChart2, Clock, Users } from 'lucide-react';
 import clsx from 'clsx';
 
 function App() {
-  const { 
-    duration, 
-    enemy, 
-    characters, 
-    result, 
+  const {
+    duration,
+    enemy,
+    characters,
+    result,
     isSimulating,
-    setResult, 
+    setResult,
     setIsSimulating,
     generateScriptFromTimeline,
-    fetchAvailableCharacters
+    fetchAvailableCharacters,
+    fetchWeapons
   } = useSimulationStore();
 
-  const [currentView, setCurrentView] = useState<'config' | 'timeline' | 'results'>('config');
+  const [currentView, setCurrentView] = useState<'config' | 'timeline' | 'results' | 'operators'>('config');
 
   useEffect(() => {
     fetchAvailableCharacters();
+    fetchWeapons();
   }, []);
 
   const runSimulation = async (showLoading = true) => {
@@ -31,16 +34,18 @@ function App() {
     try {
       const payloadCharacters = characters.map((c, idx) => {
          if (c.name === "无") return null;
-         
+
          let scriptToSend = c.script;
          if (c.timeline && c.timeline.length > 0) {
             scriptToSend = generateScriptFromTimeline(idx);
          }
-         
+
          return {
             name: c.name,
             script: scriptToSend,
-            molten_stacks: c.molten_stacks
+            molten_stacks: c.molten_stacks,
+            custom_attrs: c.custom_attrs,
+            weapon_id: c.weapon_id
          };
       }).filter(Boolean);
 
@@ -108,6 +113,15 @@ function App() {
                 <Clock className="w-4 h-4" /> 排轴编辑
               </button>
               <button
+                onClick={() => setCurrentView('operators')}
+                className={clsx(
+                  "px-4 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2",
+                  currentView === 'operators' ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                <Users className="w-4 h-4" /> 干员管理
+              </button>
+              <button
                 onClick={() => setCurrentView('results')}
                 disabled={!result}
                 className={clsx(
@@ -139,10 +153,12 @@ function App() {
 
         {/* Main Content Area */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
-          
+
           {currentView === 'config' && <ConfigView />}
-          
+
           {currentView === 'timeline' && <TimelineView />}
+
+          {currentView === 'operators' && <OperatorManagement />}
 
           {currentView === 'results' && result && <SimulationResults />}
 
