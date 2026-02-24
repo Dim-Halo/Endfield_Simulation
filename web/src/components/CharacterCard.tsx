@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSimulationStore, FALLBACK_SCRIPTS } from '../store/useSimulationStore';
-import { User, Search, ChevronDown, Check } from 'lucide-react';
+import { User, Search, ChevronDown, Check, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
+import { CharacterConfigModal } from './CharacterConfigModal';
 
 interface Props {
   index: number;
@@ -101,6 +102,7 @@ const CharacterSelector: React.FC<{
 export const CharacterCard: React.FC<Props> = ({ index }) => {
   const { characters, setCharacter, availableCharacters, defaultScripts, weapons } = useSimulationStore();
   const char = characters[index];
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
   const handleNameChange = (newName: string) => {
     // Look up default script from store (loaded from backend), fallback to empty
@@ -108,8 +110,11 @@ export const CharacterCard: React.FC<Props> = ({ index }) => {
     setCharacter(index, { name: newName, script: defaultScript, weapon_id: undefined });
   };
 
-  const handleWeaponChange = (weaponId: string) => {
-    setCharacter(index, { weapon_id: weaponId === 'none' ? undefined : weaponId });
+  // 获取当前装备的武器名称
+  const getWeaponName = () => {
+    if (!char.weapon_id) return "无武器";
+    const weapon = weapons.find(w => w.id === char.weapon_id);
+    return weapon ? weapon.name : "无武器";
   };
 
   return (
@@ -127,23 +132,29 @@ export const CharacterCard: React.FC<Props> = ({ index }) => {
 
       <div className="flex-1 flex flex-col justify-center">
         {char.name !== "无" ? (
-          <div className="flex flex-col gap-4 px-1">
-            {/* 武器选择 */}
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-gray-600">武器</label>
-              <select
-                className="w-full p-2 text-xs border border-gray-200 rounded bg-gray-50 hover:bg-gray-100"
-                value={char.weapon_id || 'none'}
-                onChange={(e) => handleWeaponChange(e.target.value)}
-              >
-                <option value="none">无武器</option>
-                {weapons.map(weapon => (
-                  <option key={weapon.id} value={weapon.id}>
-                    {weapon.name} (ATK+{weapon.weapon_atk})
-                  </option>
-                ))}
-              </select>
+          <div className="flex flex-col gap-3 px-1">
+            {/* 装备信息显示 */}
+            <div className="flex flex-col gap-2 p-3 bg-gray-50 rounded border border-gray-200">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-600">武器</span>
+                <span className="text-xs font-medium text-gray-900">{getWeaponName()}</span>
+              </div>
+              {char.equipment_ids && Object.keys(char.equipment_ids).length > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-600">装备</span>
+                  <span className="text-xs font-medium text-gray-900">{Object.keys(char.equipment_ids).length}件</span>
+                </div>
+              )}
             </div>
+
+            {/* 配置按钮 */}
+            <button
+              onClick={() => setIsConfigModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded transition-colors"
+            >
+              <Settings className="w-4 h-4" />
+              配置武器和装备
+            </button>
 
             {/* Status / Stacks Config */}
             {char.name === "莱瓦汀" && (
@@ -178,6 +189,13 @@ export const CharacterCard: React.FC<Props> = ({ index }) => {
           </div>
         )}
       </div>
+
+      {/* 配置弹窗 */}
+      <CharacterConfigModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        characterIndex={index}
+      />
     </div>
   );
 };

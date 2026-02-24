@@ -1,0 +1,28 @@
+{
+  "id": "tide-surge-set-001",
+  "name": "潮涌",
+  "description": "强大的法术套装，提升技能伤害和法术伤害",
+  "bonuses": [
+    {
+      "pieces_required": 3,
+      "stat_bonuses": {
+        "skill_dmg_bonus": 0.20
+      },
+      "effects": [
+        {
+          "effect_type": "on_element_attach",
+          "trigger_condition": {
+            "min_stacks": 2,
+            "element_types": ["ELECTRO", "HEAT", "NATURE", "COLD"]
+          },
+          "buff_stats": {
+            "magic_dmg_bonus": 0.35
+          },
+          "duration": 15.0,
+          "description": "使敌人达到两层及以上法术附着后，造成的法术伤害+35%，持续15秒"
+        }
+      ],
+      "description": "三件套：装备者所有技能伤害+20%。装备者使敌人达到两层及以上法术附着后，造成的法术伤害+35%，持续15秒，该效果无法叠加"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "3d30ef17-312c-469b-a253-6931bc72da9a",
+    "name": "纾难印章",
+    "description": "提升防御和充能效率的配件",
+    "slot": "accessory_1",
+    "stat_bonuses": {
+      "defense": 21,
+      "intelligence": 43,
+      "ult_charge_efficiency": 0.257
+    },
+    "effects": [],
+    "set_id": null,
+    "set_name": null
+  }
+]

@@ -340,14 +340,17 @@ class EventBuilder:
 
     @staticmethod
     def action_event(event_type: EventType, character,
-                    action_name: str, duration: int, tick: int = 0) -> Event:
+                    action_name: str, duration: int, tick: int = 0, move_type=None) -> Event:
         """创建行动事件"""
+        data = {
+            "action_name": action_name,
+            "duration": duration,
+        }
+        if move_type is not None:
+            data["move_type"] = move_type
         return Event(
             event_type=event_type,
-            data={
-                "action_name": action_name,
-                "duration": duration,
-            },
+            data=data,
             source=character,
             tick=tick
         )

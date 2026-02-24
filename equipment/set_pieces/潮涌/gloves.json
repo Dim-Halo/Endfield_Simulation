@@ -1,0 +1,18 @@
+[
+  {
+    "id": "tide-surge-gloves-001",
+    "name": "潮涌手甲",
+    "description": "潮涌套装的护手，提升法术强度",
+    "slot": "gloves",
+    "stat_bonuses": {
+      "defense": 42,
+      "strength": 65,
+      "willpower": 43,
+      "frost_dmg_bonus": 0.192,
+      "electric_dmg_bonus": 0.192
+    },
+    "effects": [],
+    "set_id": "tide-surge-set-001",
+    "set_name": "潮涌"
+  }
+]

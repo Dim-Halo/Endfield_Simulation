@@ -2,8 +2,8 @@
 
 SKILL_MULTIPLIERS = {
     # 普攻
-    "normal": [64, 75, 107, 118, 160],
-    "enhanced_normal": [162, 203, 289, 506],
+    "normal": [29, 43, 45, 70, 95],
+    "enhanced_normal": [117, 146, 208, 365],
     
     # 战技
     "skill_initial": 140,

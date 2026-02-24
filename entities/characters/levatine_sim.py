@@ -1,13 +1,13 @@
 # entities/characters/levatine_sim.py
-from .base_actor import BaseActor
-from simulation.action import Action, DamageEvent
-from core.calculator import DamageEngine
-from core.stats import CombatStats, Attributes, StatKey
-from core.enums import Element, MoveType, ReactionType, BuffCategory
-from mechanics.buff_system import Buff, BurningBuff
-from .levatine_constants import SKILL_MULTIPLIERS, FRAME_DATA, MECHANICS
 from core.damage_helper import deal_damage
+from core.enums import Element, MoveType, ReactionType, BuffCategory
+from core.stats import CombatStats, Attributes, StatKey
+from mechanics.buff_system import Buff, BurningBuff
+from simulation.action import Action, DamageEvent
 from simulation.event_system import EventType
+
+from .base_actor import BaseActor
+from .levatine_constants import SKILL_MULTIPLIERS, FRAME_DATA, MECHANICS
 
 class HeatInflict(Buff):
     """莱瓦汀天赋：灼热附着 - 标记目标"""
@@ -23,16 +23,12 @@ class LevatineSim(BaseActor):
         self.target = target
 
         # 角色属性
-        self.attrs = Attributes(strength=121, agility=99, intelligence=197, willpower=89)
+        self.attrs = Attributes(strength=121, agility=99, intelligence=177, willpower=89)
         self.base_stats = CombatStats(base_hp=5495, base_atk=318)
 
         # 主副属性
         self.main_attr = "intelligence"
         self.sub_attr = "strength"
-
-        # 技能CD - 移除 CD 机制
-        # self.skill_cd = 100
-        # self.ult_cd = 300
 
         # 机制状态
         self.molten_stacks = 0
@@ -99,23 +95,17 @@ class LevatineSim(BaseActor):
         parts = cmd_str.split()
         cmd = parts[0].lower()
 
-        if cmd == "wait":
-            return Action(f"等待", int(float(parts[1])*10), [])
+        # 优先处理通用命令（包括wait和wait_until）
+        if cmd in ["wait", "wait_until"]:
+            return super().parse_command(cmd_str)
+
         if cmd.startswith("a") and cmd[1:].isdigit():
             return self.create_normal_attack(int(cmd[1:]) - 1)
         if cmd in ["skill", "e"]:
-            # 移除 CD 检查
-            # if self.cooldowns.get("skill", 0) > 0: return None
-            # self.cooldowns["skill"] = 100
             return self.create_skill()
         if cmd in ["ult", "q"]:
-            # 移除 CD 检查
-            # if self.cooldowns.get("ult", 0) > 0: return None
-            # self.cooldowns["ult"] = 300
             return self.create_ult()
         if cmd == "qte":
-            # 莱瓦汀特殊QTE：无CD，基于瞬间触发 (qte_ready_timer)
-            # 移除之前的轮询逻辑
             if self.qte_ready_timer > 0:
                 self.qte_ready_timer = 0
                 return self.create_qte()

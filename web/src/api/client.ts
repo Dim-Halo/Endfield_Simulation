@@ -1,10 +1,10 @@
 import axios from 'axios';
 
 // Use environment variable for API URL
+// In development, use proxy path /api
 // In production (ngrok), use relative path to work with same domain
-// In development, use localhost
 const API_URL = import.meta.env.VITE_API_URL ||
-  (import.meta.env.MODE === 'production' ? '' : 'http://127.0.0.1:8000');
+  (import.meta.env.MODE === 'production' ? '' : '/api');
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -144,6 +144,44 @@ export const weaponApi = {
   },
 };
 
+// Equipment Types
+export interface EquipmentEffect {
+  effect_type: string;
+  trigger_condition: Record<string, any>;
+  buff_stats: Record<string, number>;
+  duration: number;
+  description: string;
+}
+
+export interface Equipment {
+  id: string;
+  name: string;
+  description: string;
+  slot: string;
+  stat_bonuses: Record<string, number>;
+  effects: EquipmentEffect[];
+  set_id?: string | null;
+  set_name?: string | null;
+}
+
+// Equipment API
+export const equipmentApi = {
+  getAll: async () => {
+    const response = await apiClient.get<Equipment[]>('/equipments');
+    return response.data;
+  },
+
+  getById: async (id: string) => {
+    const response = await apiClient.get<Equipment>(`/equipments/${id}`);
+    return response.data;
+  },
+
+  getBySlot: async (slot: string) => {
+    const response = await apiClient.get<Equipment[]>(`/equipments/slot/${slot}`);
+    return response.data;
+  },
+};
+
 // Character Default Attributes
 export interface CharacterDefaultAttrs {
   character_name: string;
@@ -160,11 +198,31 @@ export interface CharacterDefaultAttrs {
     base_def: number;
     technique_power: number;
   };
+  main_attr?: string;
+  sub_attr?: string;
+}
+
+// Panel Calculation Types
+export interface PanelCalculationRequest {
+  character_name: string;
+  weapon_id?: string | null;
+  equipment_ids?: Record<string, string> | null;
+  custom_attrs?: any | null;
+}
+
+export interface PanelCalculationResponse {
+  character_name: string;
+  panel: Record<string, number>;
 }
 
 export const characterApi = {
   getDefaultAttrs: async (characterName: string) => {
     const response = await apiClient.get<CharacterDefaultAttrs>(`/characters/${characterName}/default-attrs`);
+    return response.data;
+  },
+
+  calculatePanel: async (data: PanelCalculationRequest) => {
+    const response = await apiClient.post<PanelCalculationResponse>('/calculate-panel', data);
     return response.data;
   },
 };

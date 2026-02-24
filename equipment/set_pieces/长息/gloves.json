@@ -1,0 +1,17 @@
+[
+  {
+    "id": "5ba21b17-189a-472e-ab53-c9703f201682",
+    "name": "长息·护手",
+    "description": "长息套装的护手，提升防御和属性",
+    "slot": "gloves",
+    "stat_bonuses": {
+      "defense": 42,
+      "intelligence": 65,
+      "strength": 43,
+      "ult_charge_efficiency": 0.205
+    },
+    "effects": [],
+    "set_id": "299eb998-1bc1-4a85-999e-3e0c3bce0bd8",
+    "set_name": "长息"
+  }
+]

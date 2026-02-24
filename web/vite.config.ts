@@ -28,6 +28,7 @@ export default defineConfig({
     tsconfigPaths()
   ],
   server: {
+    host: '0.0.0.0',  // 允许外部IP访问
     allowedHosts: ['.ngrok-free.dev'],
     proxy: {
       '/api': {

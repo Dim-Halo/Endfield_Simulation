@@ -1,26 +1,36 @@
-import sys
-import os
-import uvicorn
-import pkgutil
-import importlib
 import inspect
+import importlib
+import logging
+import os
+import pkgutil
+import sys
+import uvicorn
+from typing import List, Optional, Dict, Any
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+
+# 配置日志
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from simulation.engine import SimEngine
+from simulation.snapshot_engine import SnapshotEngine, categorize_buff
 from entities.dummy import DummyEnemy
 from entities.characters.base_actor import BaseActor
-from core.enums import BuffCategory, BuffEffect, ReactionType
 from core.operator_config import OperatorConfigManager
 from core.weapon_system import WeaponManager
 from core.weapon_effects import WeaponEffectHandler
+from core.equipment_system import EquipmentManager, EquipmentSetManager
+from core.equipment_effects import EquipmentEffectHandler
 
 app = FastAPI(title="Endfield Combat Simulator API")
 
@@ -45,6 +55,18 @@ weapon_manager = WeaponManager()
 # 如果武器库为空，创建默认武器
 if len(weapon_manager.get_all()) == 0:
     weapon_manager.create_default_weapons()
+
+# --- Equipment Manager ---
+equipment_manager = EquipmentManager()
+# 如果装备库为空，创建默认装备
+if len(equipment_manager.get_all()) == 0:
+    equipment_manager.create_default_equipments()
+
+# --- Equipment Set Manager ---
+equipment_set_manager = EquipmentSetManager()
+# 如果套装库为空，创建默认套装
+if len(equipment_set_manager.get_all()) == 0:
+    equipment_set_manager.create_default_sets()
 
 def load_all_characters():
     global CHAR_MAP, CHAR_DEFAULT_SCRIPTS
@@ -93,13 +115,13 @@ def load_all_characters():
                                 script_lines = ["a1", "wait 1.0", "a2"]
                                 
                             CHAR_DEFAULT_SCRIPTS[char_name] = "\n".join(script_lines)
-                            print(f"Loaded character: {char_name} from {name}")
-                            
+                            logger.info(f"Loaded character: {char_name} from {name}")
+
                         except Exception as e:
-                            print(f"Failed to load character from {name}: {e}")
-                            
+                            logger.error(f"Failed to load character from {name}: {e}", exc_info=True)
+
             except Exception as e:
-                print(f"Error importing module {name}: {e}")
+                logger.error(f"Error importing module {name}: {e}", exc_info=True)
 
 # Load characters on startup
 load_all_characters()
@@ -107,6 +129,12 @@ load_all_characters()
 class TimelineAction(BaseModel):
     startTime: float
     name: str
+    id: Optional[str] = None
+    type: Optional[str] = None
+    duration: Optional[float] = None
+
+    class Config:
+        extra = "allow"  # 允许额外字段
 
 class CharacterConfig(BaseModel):
     name: str
@@ -115,6 +143,7 @@ class CharacterConfig(BaseModel):
     molten_stacks: Optional[int] = 0
     custom_attrs: Optional[Dict[str, Any]] = None  # 自定义属性覆盖
     weapon_id: Optional[str] = None  # 装备的武器ID
+    equipment_ids: Optional[Dict[str, str]] = None  # 装备的装备ID字典 {slot: equipment_id}
 
 class OperatorConfigCreate(BaseModel):
     character_name: str
@@ -150,6 +179,27 @@ class WeaponUpdate(BaseModel):
     stat_bonuses: Optional[Dict[str, float]] = None
     effects: Optional[List[WeaponEffectModel]] = None
 
+class EquipmentEffectModel(BaseModel):
+    effect_type: str
+    trigger_condition: Dict[str, Any]
+    buff_stats: Dict[str, float]
+    duration: float
+    description: str
+
+class EquipmentCreate(BaseModel):
+    name: str
+    description: str
+    slot: str  # gloves, armor, accessory_1, accessory_2
+    stat_bonuses: Dict[str, float]
+    effects: Optional[List[EquipmentEffectModel]] = []
+
+class EquipmentUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    slot: Optional[str] = None
+    stat_bonuses: Optional[Dict[str, float]] = None
+    effects: Optional[List[EquipmentEffectModel]] = None
+
 class EnemyConfig(BaseModel):
     defense: float = 100.0
     dmg_taken_mult_physical: float = 1.0
@@ -162,140 +212,6 @@ class SimulationRequest(BaseModel):
     duration: float = 20.0
     enemy: EnemyConfig
     characters: List[CharacterConfig]
-
-# Reusing SnapshotEngine logic from app.py but adapted for API
-# We need to redefine or import SnapshotEngine. 
-# Since app.py is a script, importing from it might execute it.
-# Better to copy the SnapshotEngine class or move it to a shared module.
-# For now, I will redefine it here to avoid side effects of importing app.py.
-
-from collections import defaultdict
-
-def categorize_buff(buff):
-    # (Copy of categorize_buff from app.py)
-    if hasattr(buff, 'tags') and ReactionType.CORROSION in buff.tags:
-        return "🌐 抗性区"
-    if hasattr(buff, 'effect_type'):
-        if buff.effect_type == BuffEffect.DOT:
-            return "🔥 DOT伤害"
-        if buff.effect_type == BuffEffect.CC:
-            return "❄️ 控制"
-    if hasattr(buff, 'tags'):
-        for tag in buff.tags:
-            if tag in [ReactionType.BURNING, ReactionType.FROZEN]:
-                return "🔥 元素反应"
-            if tag == "focus":
-                return "🎯 标记"
-    if hasattr(buff, 'stat_modifiers'):
-        modifiers = buff.stat_modifiers
-        if "atk_pct" in modifiers: return "💪 攻击区"
-        if any("fragility" in key for key in modifiers): return "🛡️ 脆弱区"
-        if any("vulnerability" in key for key in modifiers): return "💔 易伤区"
-        if any(key in modifiers for key in ["dmg_bonus", "heat_dmg_bonus", "electric_dmg_bonus", "normal_dmg_bonus", "skill_dmg_bonus", "ult_dmg_bonus", "qte_dmg_bonus"]): return "⚔️ 伤害加成区"
-        if "amplification" in modifiers: return "📈 增幅区"
-        if any(key.endswith("_res") for key in modifiers): return "🌐 抗性区"
-    
-    name = buff.name
-    if "攻击" in name: return "💪 攻击区"
-    if "脆弱" in name: return "🛡️ 脆弱区"
-    if "易伤" in name or name in ["导电", "碎甲"]: return "💔 易伤区"
-    if "增伤" in name or "伤害" in name: return "⚔️ 伤害加成区"
-    if "腐蚀" in name: return "🌐 抗性区"
-    return "📦 其他"
-
-class SnapshotEngine(SimEngine):
-    def __init__(self):
-        super().__init__()
-        self.history = []
-        self.logs_by_tick = defaultdict(list)
-        self.damage_by_tick = defaultdict(int)
-        self.logs = [] 
-
-    def log(self, message, level="INFO"):
-        # 1. Process stats (Always capture damage for stats regardless of display filter)
-        if "Hit造成伤害" in message or "造成伤害" in message: 
-            try:
-                # Attempt to extract the last number which is usually the damage value
-                # Format is usually: "... Hit造成伤害 [Crit!] Value | Extra"
-                # or "... 造成真实伤害 Value"
-                parts = message.split()
-                # Find the token that is an integer
-                dmg_val = 0
-                for part in reversed(parts):
-                     # Handle possible trailing chars or pipe
-                     clean_part = part.strip("|")
-                     if clean_part.isdigit():
-                         dmg_val = int(clean_part)
-                         break
-                if dmg_val > 0:
-                    self.damage_by_tick[self.tick] += dmg_val
-            except: pass
-
-        # 2. Filter for display based on user request
-        # User wants: Time, Name, Skill Execution, Damage Dealt.
-        # "执行:" -> Action Start
-        # "Hit造成伤害" -> Direct Skill Damage
-        # Exclude: Buffs, Status, Reactions (unless dealt damage? usually reaction info is appended to damage log), Script loading, etc.
-        
-        is_action = "执行:" in message
-        is_direct_hit = "Hit造成伤害" in message
-        
-        if not (is_action or is_direct_hit):
-            return
-
-        timestamp = f"[{int(self.tick/10 // 60):02}:{self.tick/10 % 60:04.1f}]"
-        log_type = "info"
-        if is_direct_hit: 
-            log_type = "damage"
-        elif is_action: 
-            log_type = "action"
-        
-        # Clean up message if needed?
-        # User asked for "Operator Name, Executed Skill, Damage Dealt"
-        # The logs are already formatted as "[Name] Action..." so we just pass them through if they match.
-        
-        self.logs.append({"time": timestamp, "message": message, "type": log_type})
-        self.logs_by_tick[self.tick].append(f"{timestamp} {message}")
-
-    def capture_snapshot(self):
-        frame_data = {
-            "time_str": f"{self.tick / 10.0:.1f}s",
-            "tick": self.tick,
-            "damage_tick": self.damage_by_tick[self.tick],
-            "sp": self.party_manager.get_sp(), # Add Party SP
-            "entities": {}
-        }
-        for ent in self.entities:
-            buff_list = []
-            if hasattr(ent, "buffs"):
-                for b in ent.buffs.buffs:
-                    buff_list.append({
-                        "name": b.name, "stacks": b.stacks,
-                        "duration": b.duration_ticks / 10.0,
-                        "category": categorize_buff(b),
-                        "desc": getattr(b, "value", "N/A")
-                    })
-            action_info = None
-            if hasattr(ent, "current_action") and ent.current_action:
-                act = ent.current_action
-                progress = ent.action_timer / act.duration if act.duration > 0 else 0
-                action_info = {"name": act.name, "progress": min(1.0, progress)}
-            extra_info = ""
-            if hasattr(ent, "molten_stacks"): extra_info = f"熔火: {ent.molten_stacks}"
-            
-            frame_data["entities"][ent.name] = {
-                "buffs": buff_list, "action": action_info, "extra": extra_info
-            }
-        self.history.append(frame_data)
-
-    def run_with_snapshots(self, max_seconds):
-        max_ticks = int(max_seconds * 10)
-        self.capture_snapshot()
-        for _ in range(max_ticks):
-            self.tick += 1
-            for entity in self.entities:
-                entity.on_tick(self)
-            self.capture_snapshot()
 
 def parse_script_input(text):
     return [line.strip() for line in text.split('\n') if line.strip()]
@@ -389,7 +305,97 @@ async def get_character_default_attrs(character_name: str):
         return {
             "character_name": character_name,
             "attrs": attrs_dict,
-            "base_stats": base_stats_dict
+            "base_stats": base_stats_dict,
+            "main_attr": temp_instance.main_attr,
+            "sub_attr": temp_instance.sub_attr
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+class PanelCalculationRequest(BaseModel):
+    character_name: str
+    weapon_id: Optional[str] = None
+    equipment_ids: Optional[Dict[str, str]] = None
+    custom_attrs: Optional[Dict[str, Any]] = None
+
+@app.post("/calculate-panel")
+async def calculate_panel(request: PanelCalculationRequest):
+    """计算角色装备后的完整面板"""
+    try:
+        if request.character_name not in CHAR_MAP:
+            raise HTTPException(status_code=404, detail=f"Character {request.character_name} not found")
+
+        # 创建临时引擎和目标
+        from simulation.engine import SimEngine
+        temp_engine = SimEngine()
+        temp_target = DummyEnemy(temp_engine, "temp", defense=100)
+
+        # 实例化角色
+        char_class = CHAR_MAP[request.character_name]
+        obj = char_class(temp_engine, temp_target)
+
+        # 应用自定义属性覆盖（如果有）
+        if request.custom_attrs:
+            if request.custom_attrs.get('level'):
+                obj.base_stats.level = request.custom_attrs['level']
+
+            if request.custom_attrs.get('attrs'):
+                for attr_name, attr_value in request.custom_attrs['attrs'].items():
+                    if hasattr(obj.attrs, attr_name):
+                        setattr(obj.attrs, attr_name, attr_value)
+
+            if request.custom_attrs.get('base_stats'):
+                for stat_name, stat_value in request.custom_attrs['base_stats'].items():
+                    if hasattr(obj.base_stats, stat_name):
+                        setattr(obj.base_stats, stat_name, stat_value)
+
+        # 应用武器（如果有）
+        if request.weapon_id:
+            weapon = weapon_manager.get(request.weapon_id)
+            if weapon:
+                obj.base_stats.weapon_atk = weapon.weapon_atk
+
+                for stat_name, stat_value in weapon.stat_bonuses.items():
+                    if hasattr(obj.attrs, stat_name):
+                        current = getattr(obj.attrs, stat_name)
+                        setattr(obj.attrs, stat_name, current + int(stat_value))
+                    elif hasattr(obj.base_stats, stat_name):
+                        current = getattr(obj.base_stats, stat_name)
+                        setattr(obj.base_stats, stat_name, current + stat_value)
+
+        # 应用装备（如果有）
+        if request.equipment_ids:
+            for slot, equipment_id in request.equipment_ids.items():
+                if not equipment_id:
+                    continue
+
+                equipment = equipment_manager.get(equipment_id)
+                if equipment:
+                    for stat_name, stat_value in equipment.stat_bonuses.items():
+                        if hasattr(obj.attrs, stat_name):
+                            current = getattr(obj.attrs, stat_name)
+                            setattr(obj.attrs, stat_name, current + int(stat_value))
+                        elif hasattr(obj.base_stats, stat_name):
+                            current = getattr(obj.base_stats, stat_name)
+                            setattr(obj.base_stats, stat_name, current + stat_value)
+
+        # 获取计算后的面板
+        panel = obj.get_current_panel()
+
+        # 添加四维属性到面板（如果角色有attrs）
+        if hasattr(obj, 'attrs') and obj.attrs:
+            panel['strength'] = obj.attrs.strength
+            panel['agility'] = obj.attrs.agility
+            panel['intelligence'] = obj.attrs.intelligence
+            panel['willpower'] = obj.attrs.willpower
+
+        # 返回面板数据
+        return {
+            "character_name": request.character_name,
+            "panel": panel
         }
 
     except Exception as e:
@@ -503,6 +509,65 @@ async def delete_weapon(weapon_id: str):
         raise HTTPException(status_code=404, detail="Weapon not found")
     return {"success": True}
 
+# --- Equipment API Endpoints ---
+
+@app.get("/equipments")
+async def get_equipments():
+    """获取所有装备"""
+    equipments = equipment_manager.get_all()
+    return [equipment.to_dict() for equipment in equipments]
+
+@app.get("/equipments/{equipment_id}")
+async def get_equipment(equipment_id: str):
+    """获取指定ID的装备"""
+    equipment = equipment_manager.get(equipment_id)
+    if not equipment:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return equipment.to_dict()
+
+@app.get("/equipments/slot/{slot}")
+async def get_equipments_by_slot(slot: str):
+    """获取指定槽位的所有装备"""
+    equipments = equipment_manager.get_by_slot(slot)
+    return [equipment.to_dict() for equipment in equipments]
+
+@app.post("/equipments")
+async def create_equipment(data: EquipmentCreate):
+    """创建新装备"""
+    effects = [eff.dict() for eff in data.effects] if data.effects else []
+    equipment = equipment_manager.create(
+        name=data.name,
+        description=data.description,
+        slot=data.slot,
+        stat_bonuses=data.stat_bonuses,
+        effects=effects
+    )
+    return equipment.to_dict()
+
+@app.put("/equipments/{equipment_id}")
+async def update_equipment(equipment_id: str, data: EquipmentUpdate):
+    """更新装备"""
+    effects = [eff.dict() for eff in data.effects] if data.effects else None
+    equipment = equipment_manager.update(
+        equipment_id=equipment_id,
+        name=data.name,
+        description=data.description,
+        slot=data.slot,
+        stat_bonuses=data.stat_bonuses,
+        effects=effects
+    )
+    if not equipment:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return equipment.to_dict()
+
+@app.delete("/equipments/{equipment_id}")
+async def delete_equipment(equipment_id: str):
+    """删除装备"""
+    success = equipment_manager.delete(equipment_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Equipment not found")
+    return {"success": True}
+
 @app.post("/simulate")
 async def run_simulation(request: SimulationRequest):
     try:
@@ -578,6 +643,72 @@ async def run_simulation(request: SimulationRequest):
                         if not hasattr(obj, 'weapon_handlers'):
                             obj.weapon_handlers = []
                         obj.weapon_handlers.append(weapon_handler)
+
+            # 应用装备（如果有）
+            if c.equipment_ids:
+                if not hasattr(obj, 'equipment_handlers'):
+                    obj.equipment_handlers = []
+
+                # 收集所有装备
+                equipped_items = []
+                for slot, equipment_id in c.equipment_ids.items():
+                    if not equipment_id:
+                        continue
+
+                    equipment = equipment_manager.get(equipment_id)
+                    if equipment:
+                        equipped_items.append(equipment)
+                        # 应用装备属性加成
+                        for stat_name, stat_value in equipment.stat_bonuses.items():
+                            # 四维属性
+                            if hasattr(obj.attrs, stat_name):
+                                current = getattr(obj.attrs, stat_name)
+                                setattr(obj.attrs, stat_name, current + int(stat_value))
+                            # 基础面板属性
+                            elif hasattr(obj.base_stats, stat_name):
+                                current = getattr(obj.base_stats, stat_name)
+                                setattr(obj.base_stats, stat_name, current + stat_value)
+
+                        # 应用装备特殊效果
+                        if equipment.effects:
+                            equipment_handler = EquipmentEffectHandler(obj, equipment, sim)
+                            obj.equipment_handlers.append(equipment_handler)
+
+                # 检查并应用套装效果
+                if equipped_items:
+                    active_set_bonuses = equipment_set_manager.check_set_bonuses(equipped_items)
+                    for set_id, bonuses in active_set_bonuses.items():
+                        equipment_set = equipment_set_manager.get(set_id)
+                        for bonus in bonuses:
+                            # 应用套装属性加成
+                            for stat_name, stat_value in bonus.stat_bonuses.items():
+                                # 四维属性
+                                if hasattr(obj.attrs, stat_name):
+                                    current = getattr(obj.attrs, stat_name)
+                                    setattr(obj.attrs, stat_name, current + int(stat_value))
+                                # 基础面板属性
+                                elif hasattr(obj.base_stats, stat_name):
+                                    current = getattr(obj.base_stats, stat_name)
+                                    setattr(obj.base_stats, stat_name, current + stat_value)
+
+                            # 记录套装效果激活
+                            sim.log(f"[{obj.name}] 套装效果激活: {equipment_set.name} - {bonus.description}")
+
+                            # 应用套装特殊效果（如果有）
+                            if bonus.effects:
+                                for effect in bonus.effects:
+                                    # 创建一个临时装备对象来应用套装效果
+                                    from core.equipment_system import Equipment
+                                    temp_equipment = Equipment(
+                                        id=f"set_{set_id}",
+                                        name=f"{equipment_set.name}套装效果",
+                                        description=bonus.description,
+                                        slot="set",
+                                        stat_bonuses={},
+                                        effects=[effect]
+                                    )
+                                    equipment_handler = EquipmentEffectHandler(obj, temp_equipment, sim)
+                                    obj.equipment_handlers.append(equipment_handler)
 
             if hasattr(obj, "molten_stacks"):
                 obj.molten_stacks = c.molten_stacks

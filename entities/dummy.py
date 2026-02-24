@@ -59,15 +59,14 @@ class DummyEnemy:
             "electric_res": self.resistances.get(Element.ELECTRIC, 0.0),
             "frost_res": self.resistances.get(Element.FROST, 0.0),
             "nature_res": self.resistances.get(Element.NATURE, 0.0),
-            
+
             # 状态标记
             "is_staggered": self.is_staggered
         }
-        
-        # 2. 应用 Buff
-        # Dummy 的 buffs 会修改上述 stats，例如添加易伤、削减抗性
-        stats = self.buffs.apply_stats(stats)
-        
+
+        # 2. 应用 Buff (直接修改stats字典)
+        self.buffs.apply_stats(stats)
+
         return stats
 
     def take_damage(self, amount):

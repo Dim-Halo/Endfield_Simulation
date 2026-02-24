@@ -4,11 +4,19 @@ from .stats import StatKey
 class DamageEngine:
     @staticmethod
     def calculate(attacker_stats: dict, target_stats: dict, skill_mv: float,
-                  element: Element, move_type: MoveType = MoveType.OTHER):
+                  element: Element, move_type: MoveType = MoveType.OTHER, is_crit: bool = False):
         """
         伤害计算公式（14个乘区）：
         基础伤害区 × 暴击区 × 伤害加成区 × 伤害减免区 × 易伤区 × 增幅区 × 庇护区 ×
         脆弱区 × 防御区 × 失衡易伤区 × 减伤区 × 抗性区 × 非主控减伤区 × 特殊加成区
+
+        Args:
+            attacker_stats: 攻击方属性
+            target_stats: 目标属性
+            skill_mv: 技能倍率
+            element: 元素类型
+            move_type: 招式类型
+            is_crit: 是否暴击（True=暴击，False=不暴击）
         """
 
         # ============================================================
@@ -20,14 +28,25 @@ class DamageEngine:
         # ============================================================
         # 2. 暴击区
         # ============================================================
-        c_rate = min(1.0, max(0.0, attacker_stats.get(StatKey.CRIT_RATE, 0.0)))
-        c_dmg = attacker_stats.get(StatKey.CRIT_DMG, 0.5)
-        crit_mult = 1.0 + (c_rate * c_dmg)
+        if is_crit:
+            # 真实暴击：应用暴击伤害加成
+            c_dmg = attacker_stats.get(StatKey.CRIT_DMG, 0.5)
+            crit_mult = 1.0 + c_dmg
+        else:
+            # 未暴击：无加成
+            crit_mult = 1.0
 
         # ============================================================
-        # 3. 伤害加成区（加算）
+        # 3. 伤害加成区（加算：基础 + 物理/法术 + 招式 + 元素 + 失衡）
         # ============================================================
         base_bonus = attacker_stats.get(StatKey.DMG_BONUS, 0.0)
+
+        # 物理/法术增伤
+        type_bonus = 0.0
+        if element == Element.PHYSICAL:
+            type_bonus = attacker_stats.get(StatKey.PHYSICAL_DMG_BONUS, 0.0)
+        else:
+            type_bonus = attacker_stats.get(StatKey.MAGIC_DMG_BONUS, 0.0)
 
         # 招式增伤
         move_bonus = 0.0
@@ -55,7 +74,7 @@ class DamageEngine:
         if target_stats.get('is_staggered', False):
             stagger_bonus = attacker_stats.get('stagger_dmg_bonus', 0.0)
 
-        bonus_mult = 1.0 + base_bonus + move_bonus + elem_bonus + stagger_bonus
+        bonus_mult = 1.0 + base_bonus + type_bonus + move_bonus + elem_bonus + stagger_bonus
 
         # ============================================================
         # 4. 伤害减免区（目标的基础伤害减免）
@@ -75,9 +94,21 @@ class DamageEngine:
         vuln_mult = 1.0 + vuln
 
         # ============================================================
-        # 6. 增幅区
+        # 6. 增幅区（加算：基础 + 物理/法术 + 元素）
         # ============================================================
-        amp_mult = 1.0 + attacker_stats.get(StatKey.AMPLIFICATION, 0.0)
+        base_amp = attacker_stats.get(StatKey.AMPLIFICATION, 0.0)
+
+        # 物理/法术增幅
+        type_amp = 0.0
+        if element == Element.PHYSICAL:
+            type_amp = attacker_stats.get('physical_amplification', 0.0)
+        else:
+            type_amp = attacker_stats.get('magic_amplification', 0.0)
+
+        # 元素增幅
+        elem_amp = attacker_stats.get(f"{element.value}_amplification", 0.0)
+
+        amp_mult = 1.0 + base_amp + type_amp + elem_amp
 
         # ============================================================
         # 7. 庇护区（独立乘区）

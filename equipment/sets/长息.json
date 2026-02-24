@@ -1,0 +1,32 @@
+{
+  "id": "299eb998-1bc1-4a85-999e-3e0c3bce0bd8",
+  "name": "长息",
+  "description": "提升生命值和团队伤害的套装",
+  "bonuses": [
+    {
+      "pieces_required": 3,
+      "stat_bonuses": {
+        "flat_hp": 1000
+      },
+      "effects": [
+        {
+          "effect_type": "on_buff_applied",
+          "trigger_condition": {
+            "buff_types": [
+              "amplification",
+              "sanctuary",
+              "vulnerability",
+              "fragility"
+            ]
+          },
+          "buff_stats": {
+            "dmg_bonus": 0.16
+          },
+          "duration": 15.0,
+          "description": "施加增幅、庇护、脆弱、虚弱后，使其他队友造成的伤害+16%，持续15秒"
+        }
+      ],
+      "description": "3件套：生命值+1000，施加增幅、庇护、脆弱、虚弱后，使其他队友造成的伤害+16%，持续15秒"
+    }
+  ]
+}

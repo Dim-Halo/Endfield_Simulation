@@ -260,6 +260,15 @@ class BuffManager:
     def __init__(self, owner):
         self.owner = owner
         self.buffs: List[Buff] = []
+        self._version = 0  # 版本号,用于缓存失效
+
+    def get_version(self):
+        """获取当前版本号"""
+        return self._version
+
+    def _increment_version(self):
+        """增加版本号"""
+        self._version += 1
 
     def get_buff(self, name: str) -> Optional[Buff]:
         """获取指定名称的Buff"""
@@ -273,6 +282,7 @@ class BuffManager:
         for b in self.buffs:
             if b.name == new_buff.name:
                 b.on_stack(new_buff)
+                self._increment_version()  # 更新版本号
                 if engine:
                     engine.log(f"   (Buff) [{self.owner.name}] 刷新: {b.name} (层数:{b.stacks})")
                     # 发布Buff叠加事件
@@ -292,7 +302,8 @@ class BuffManager:
         self.buffs.append(new_buff)
         # 初始化Buff
         new_buff.on_apply(self.owner, engine)
-        
+        self._increment_version()  # 更新版本号
+
         if engine:
             engine.log(f"   (Buff) [{self.owner.name}] 获得: {new_buff.name}")
             # 发布Buff施加事件
@@ -313,10 +324,12 @@ class BuffManager:
     def tick_all(self, engine):
         """更新所有Buff"""
         active_buffs = []
+        version_changed = False
         for b in self.buffs:
             if not b.on_tick(self.owner, engine):
                 active_buffs.append(b)
             else:
+                version_changed = True
                 engine.log(f"   (Buff) [{self.owner.name}] 效果结束: {b.name}")
                 # 发布Buff过期事件
                 if hasattr(engine, 'event_bus'):
@@ -328,14 +341,13 @@ class BuffManager:
                         tick=engine.tick
                     )
         self.buffs = active_buffs
+        if version_changed:
+            self._increment_version()  # 更新版本号
 
     def apply_stats(self, base_stats: Dict):
-        """应用所有Buff的属性修改"""
-        import copy
-        final_stats = copy.deepcopy(base_stats)
+        """应用所有Buff的属性修改(直接修改传入的字典)"""
         for b in self.buffs:
-            b.modify_stats(final_stats)
-        return final_stats
+            b.modify_stats(base_stats)
         
     def apply_reaction_enhancements(self, reaction_result):
         """应用所有Buff的反应增强效果"""

@@ -1,0 +1,17 @@
+[
+  {
+    "id": "tide-surge-accessory-001",
+    "name": "浊流切割炬",
+    "description": "潮涌套装的配件，提升法术强度和元素伤害",
+    "slot": "accessory_1",
+    "stat_bonuses": {
+      "defense": 21,
+      "intelligence": 32,
+      "strength": 21,
+      "normal_dmg_bonus": 0.276
+    },
+    "effects": [],
+    "set_id": "tide-surge-set-001",
+    "set_name": "潮涌"
+  }
+]

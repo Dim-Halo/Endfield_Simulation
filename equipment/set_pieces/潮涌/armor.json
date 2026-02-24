@@ -1,0 +1,17 @@
+[
+  {
+    "id": "tide-surge-armor-001",
+    "name": "落潮轻甲",
+    "description": "潮涌套装的护甲，提升生命和法术强度",
+    "slot": "armor",
+    "stat_bonuses": {
+      "defense": 56,
+      "intelligence": 87,
+      "strength": 58,
+      "ult_charge_efficiency": 0.123
+    },
+    "effects": [],
+    "set_id": "tide-surge-set-001",
+    "set_name": "潮涌"
+  }
+]

@@ -28,5 +28,31 @@
         "description": "对敌方施加燃烧或导电后法术伤害+33.6%，源石技艺强度+70，持续15s"
       }
     ]
+  },
+  {
+    "id": "3b9a35c5-4cd9-4031-a400-1e842ed532db",
+    "name": "嘶鸣烈火",
+    "description": "强大的武器，提供智识和攻击力加成，释放终结技时大幅提升普攻伤害",
+    "weapon_atk": 510,
+    "stat_bonuses": {
+      "intelligence": 100,
+      "atk_pct": 0.13,
+      "heat_dmg_bonus": 0.192
+    },
+    "effects": [
+      {
+        "effect_type": "on_skill_cast",
+        "trigger_condition": {
+          "move_types": [
+            "ULTIMATE"
+          ]
+        },
+        "buff_stats": {
+          "normal_dmg_bonus": 0.9
+        },
+        "duration": 20.0,
+        "description": "释放终结技时获得普攻伤害+90%，持续20秒"
+      }
+    ]
   }
 ]

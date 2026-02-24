@@ -1,6 +1,7 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import { getActionDuration, preloadCharacterConstants } from '../utils/constants';
-import { apiClient, operatorConfigApi, OperatorConfig, weaponApi, Weapon } from '../api/client';
+import { apiClient, operatorConfigApi, OperatorConfig, weaponApi, Weapon, equipmentApi, Equipment } from '../api/client';
 
 export type CharacterName = "无" | "莱瓦汀" | "狼卫" | "艾尔黛拉" | "安塔尔" | "管理员" | "陈千语" | "大潘" | "骏卫";
 export type ActionType = "Skill" | "Ult" | "QTE" | "Attack" | "Wait";
@@ -19,6 +20,7 @@ export interface CharacterConfig {
   molten_stacks?: number;
   timeline?: TimelineAction[];
   weapon_id?: string;
+  equipment_ids?: Record<string, string>;
   // 属性覆盖（直接修改的属性）
   custom_attrs?: {
     level?: number;
@@ -64,9 +66,11 @@ interface SimulationState {
   result: SimulationResult | null;
   isSimulating: boolean;
   weapons: Weapon[];
+  equipments: Equipment[];
 
   fetchAvailableCharacters: () => Promise<void>;
   fetchWeapons: () => Promise<void>;
+  fetchEquipments: () => Promise<void>;
   setDuration: (d: number) => void;
   setEnemy: (e: Partial<EnemyConfig>) => void;
   setCharacter: (index: number, c: Partial<CharacterConfig>) => void;
@@ -298,22 +302,25 @@ const findNearestValidPosition = (
   return clampedTime;
 };
 
-export const useSimulationStore = create<SimulationState>((set, get) => ({
-  duration: 20,
-  enemy: {
-    defense: 100,
-    dmg_taken_mult_physical: 1.0,
-    dmg_taken_mult_heat: 1.0,
-    dmg_taken_mult_electric: 1.0,
-    dmg_taken_mult_nature: 1.0,
-    dmg_taken_mult_frost: 1.0,
-  },
-  characters: Array(4).fill(null).map(() => ({ name: "无", script: "", timeline: [] })),
-  availableCharacters: ["无"],
-  defaultScripts: {},
-  result: null,
-  isSimulating: false,
-  weapons: [],
+export const useSimulationStore = create<SimulationState>()(
+  persist(
+    (set, get) => ({
+      duration: 20,
+      enemy: {
+        defense: 100,
+        dmg_taken_mult_physical: 1.0,
+        dmg_taken_mult_heat: 1.0,
+        dmg_taken_mult_electric: 1.0,
+        dmg_taken_mult_nature: 1.0,
+        dmg_taken_mult_frost: 1.0,
+      },
+      characters: Array(4).fill(null).map(() => ({ name: "无", script: "", timeline: [] })),
+      availableCharacters: ["无"],
+      defaultScripts: {},
+      result: null,
+      isSimulating: false,
+      weapons: [],
+      equipments: [],
 
   fetchAvailableCharacters: async () => {
       try {
@@ -347,6 +354,23 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
       set({ weapons });
     } catch (err) {
       console.error("Failed to fetch weapons", err);
+    }
+  },
+
+  fetchEquipments: async () => {
+    try {
+      const equipments = await equipmentApi.getAll();
+      console.log('[fetchEquipments] Raw response:', equipments);
+      console.log('[fetchEquipments] Type:', typeof equipments);
+      console.log('[fetchEquipments] Is Array:', Array.isArray(equipments));
+      console.log('[fetchEquipments] Length:', equipments.length);
+      if (equipments.length > 0) {
+        console.log('[fetchEquipments] First item:', equipments[0]);
+      }
+      set({ equipments });
+    } catch (err) {
+      console.error("[fetchEquipments] Failed:", err);
+      alert(`装备加载失败: ${err}`);
     }
   },
 
@@ -455,9 +479,17 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     // Always clamp to timeline boundaries first
     updatedAction.startTime = Math.max(0, Math.min(updatedAction.startTime, state.duration - updatedAction.duration));
 
-    // Check for collision (excluding self)
-    if (checkCollision(updatedAction, char.timeline, actionId)) {
-      // Instead of rejecting, find nearest valid position
+    // 简化碰撞检测：只检查是否真的重叠，不自动调整位置
+    // 如果用户明确设置了位置（通过编辑模态框），就尊重用户的选择
+    // 只在拖动时才进行自动调整
+    const hasCollision = checkCollision(updatedAction, char.timeline, actionId);
+
+    // 如果有碰撞且是通过拖动触发的更新（只更新了startTime），才进行自动调整
+    // 如果是通过编辑模态框更新的（可能同时更新了多个字段），就允许重叠
+    const isDragUpdate = updates.startTime !== undefined && Object.keys(updates).length === 1;
+
+    if (hasCollision && isDragUpdate) {
+      // 拖动时才自动调整到最近的有效位置
       const adjustedStartTime = findNearestValidPosition(
         updatedAction.startTime,
         updatedAction.duration,
@@ -465,9 +497,9 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
         actionId,
         state.duration
       );
-
       updatedAction.startTime = adjustedStartTime;
     }
+    // 如果是编辑模态框更新，即使有碰撞也允许（用户可能故意这样设置）
 
     char.timeline = char.timeline.map(a =>
       a.id === actionId ? updatedAction : a
@@ -493,4 +525,16 @@ export const useSimulationStore = create<SimulationState>((set, get) => ({
     if (!char.timeline) return "";
     return generateScriptFromActions(char.timeline, char.name);
   }
-}));
+    }),
+    {
+      name: 'endfield-simulation-storage', // localStorage key
+      storage: createJSONStorage(() => localStorage),
+      // 只持久化这些字段
+      partialize: (state) => ({
+        duration: state.duration,
+        enemy: state.enemy,
+        characters: state.characters,
+      }),
+    }
+  )
+);

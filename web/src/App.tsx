@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ConfigView } from './components/ConfigView';
 import { TimelineView } from './components/TimelineView';
 import { SimulationResults } from './components/SimulationResults';
-import { OperatorManagement } from './components/OperatorManagement';
 import { useSimulationStore } from './store/useSimulationStore';
 import { apiClient } from './api/client';
-import { Play, Loader2, Settings, BarChart2, Clock, Users } from 'lucide-react';
+import { Play, Loader2, Settings, BarChart2, Clock } from 'lucide-react';
 import clsx from 'clsx';
 
 function App() {
@@ -19,14 +18,17 @@ function App() {
     setIsSimulating,
     generateScriptFromTimeline,
     fetchAvailableCharacters,
-    fetchWeapons
+    fetchWeapons,
+    fetchEquipments
   } = useSimulationStore();
 
-  const [currentView, setCurrentView] = useState<'config' | 'timeline' | 'results' | 'operators'>('config');
+  const [currentView, setCurrentView] = useState<'config' | 'timeline' | 'results'>('config');
 
   useEffect(() => {
     fetchAvailableCharacters();
     fetchWeapons();
+    fetchEquipments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const runSimulation = async (showLoading = true) => {
@@ -45,7 +47,8 @@ function App() {
             script: scriptToSend,
             molten_stacks: c.molten_stacks,
             custom_attrs: c.custom_attrs,
-            weapon_id: c.weapon_id
+            weapon_id: c.weapon_id,
+            equipment_ids: c.equipment_ids
          };
       }).filter(Boolean);
 
@@ -113,15 +116,6 @@ function App() {
                 <Clock className="w-4 h-4" /> 排轴编辑
               </button>
               <button
-                onClick={() => setCurrentView('operators')}
-                className={clsx(
-                  "px-4 py-1.5 text-sm font-medium rounded-md transition-all flex items-center gap-2",
-                  currentView === 'operators' ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                )}
-              >
-                <Users className="w-4 h-4" /> 干员管理
-              </button>
-              <button
                 onClick={() => setCurrentView('results')}
                 disabled={!result}
                 className={clsx(
@@ -157,8 +151,6 @@ function App() {
           {currentView === 'config' && <ConfigView />}
 
           {currentView === 'timeline' && <TimelineView />}
-
-          {currentView === 'operators' && <OperatorManagement />}
 
           {currentView === 'results' && result && <SimulationResults />}
 

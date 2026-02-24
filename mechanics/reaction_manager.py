@@ -144,12 +144,14 @@ class ReactionManager:
 
     def _handle_elemental_hit(self, incoming_element, attacker_atk, attacker_tech, attacker_lvl, attacker_name) -> ReactionResult:
         result = ReactionResult()
-        
+
         if self.attachment_element is None:
             self.attachment_element = incoming_element
             self.attachment_stacks = 1
             result.reaction_types.append(ReactionType.ATTACH)
             result.log_msg = f"施加 {incoming_element.value} 附着"
+            # 发出元素附着事件
+            self._emit_element_attached_event(attacker_name, incoming_element, self.attachment_stacks)
             return result
 
         if self.attachment_element == incoming_element:
@@ -157,6 +159,8 @@ class ReactionManager:
             self.attachment_stacks = min(self.config.max_attachment_stacks, self.attachment_stacks + 1)
             result.reaction_types.append(ReactionType.BURST)
             result.log_msg = f"法术爆发({incoming_element.value} {self.attachment_stacks}层)"
+            # 发出元素附着事件（层数增加）
+            self._emit_element_attached_event(attacker_name, incoming_element, self.attachment_stacks)
             return result
 
         # 异色反应
@@ -240,5 +244,18 @@ class ReactionManager:
                 }
                 if phys_type is not None:
                     data["phys_type"] = phys_type
-                
+
                 self.engine.event_bus.emit_simple(EventType.REACTION_TRIGGERED, **data)
+
+    def _emit_element_attached_event(self, attacker_name, element, stacks):
+        """发出元素附着事件"""
+        if hasattr(self.engine, 'event_bus'):
+            from simulation.event_system import EventType
+            self.engine.event_bus.emit_simple(
+                EventType.ELEMENT_ATTACHED,
+                target=self.owner.name,
+                attacker=attacker_name,
+                element=element,
+                stacks=stacks,
+                tick=self.engine.tick
+            )

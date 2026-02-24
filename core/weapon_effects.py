@@ -1,7 +1,7 @@
 """武器特殊效果处理器"""
 from simulation.event_system import EventType
 from core.enums import ReactionType
-from mechanics.buff_system import Buff
+from mechanics.buff_system import StatModifierBuff, BuffCategory
 
 
 class WeaponEffectHandler:
@@ -26,6 +26,13 @@ class WeaponEffectHandler:
                     lambda event, eff=effect: self.on_reaction_triggered(event, eff),
                     priority=50
                 )
+            elif effect.effect_type == "on_skill_cast":
+                # 监听技能释放事件
+                self.engine.event_bus.subscribe(
+                    EventType.ACTION_START,
+                    lambda event, eff=effect: self.on_skill_cast(event, eff),
+                    priority=50
+                )
 
     def on_reaction_triggered(self, event, effect):
         """当反应触发时"""
@@ -45,14 +52,32 @@ class WeaponEffectHandler:
         # 应用 buff
         self.apply_effect_buff(effect)
 
+    def on_skill_cast(self, event, effect):
+        """当技能释放时"""
+        # 检查是否是该角色释放的技能
+        if event.source != self.character:
+            return
+
+        # 检查技能类型是否匹配
+        move_type = event.data.get('move_type')
+        if not move_type:
+            return
+
+        trigger_move_types = effect.trigger_condition.get('move_types', [])
+        if move_type.name not in trigger_move_types:
+            return
+
+        # 应用 buff
+        self.apply_effect_buff(effect)
+
     def apply_effect_buff(self, effect):
         """应用效果 buff"""
-        # 创建 buff
-        buff = Buff(
+        # 创建 buff - 使用 StatModifierBuff
+        buff = StatModifierBuff(
             name=f"{self.weapon.name}效果",
-            duration_ticks=int(effect.duration * 10),
+            duration=effect.duration,
             stat_modifiers=effect.buff_stats,
-            stacks=1,
+            category=BuffCategory.BUFF,
             max_stacks=1
         )
 

@@ -26,6 +26,8 @@ class StatKey:
     
     # 增伤
     DMG_BONUS = "dmg_bonus"
+    PHYSICAL_DMG_BONUS = "physical_dmg_bonus"  # 物理增伤
+    MAGIC_DMG_BONUS = "magic_dmg_bonus"  # 法术增伤
     NORMAL_DMG_BONUS = "normal_dmg_bonus"
     SKILL_DMG_BONUS = "skill_dmg_bonus"
     ULT_DMG_BONUS = "ult_dmg_bonus"
@@ -44,9 +46,16 @@ class StatKey:
     
     # 穿透
     RES_PEN = "res_pen"
-    
-    # 增幅
-    AMPLIFICATION = "amplification"
+
+    # 增幅（细化为物理/法术/元素）
+    AMPLIFICATION = "amplification"  # 通用增幅
+    PHYSICAL_AMPLIFICATION = "physical_amplification"  # 物理增幅
+    MAGIC_AMPLIFICATION = "magic_amplification"  # 法术增幅
+    HEAT_AMPLIFICATION = "heat_amplification"  # 灼热增幅
+    ELECTRIC_AMPLIFICATION = "electric_amplification"  # 电磁增幅
+    FROST_AMPLIFICATION = "frost_amplification"  # 寒冷增幅
+    NATURE_AMPLIFICATION = "nature_amplification"  # 自然增幅
+
     SPECIAL_BONUS = "special_bonus"
     HEAL_BONUS = "heal_bonus"
     
@@ -87,6 +96,10 @@ class CombatStats:
     # 全区增伤
     dmg_bonus: float = 0.0
 
+    # 物理/法术增伤
+    physical_dmg_bonus: float = 0.0  # 物理增伤
+    magic_dmg_bonus: float = 0.0  # 法术增伤
+
     # 招式增伤
     normal_dmg_bonus: float = 0.0 # 普攻增伤
     skill_dmg_bonus: float = 0.0  # 战技增伤
@@ -106,10 +119,20 @@ class CombatStats:
     
     # --- 4. 穿透区 (Penetration) ---
     res_pen: float = 0.0      # 抗性穿透
-    
+
     # --- 5. 增幅区 (Amplification - 独立乘区) ---
     # 极少见的乘区，通常来自特殊大招或核心被动
-    amplification: float = 0.0
+    amplification: float = 0.0  # 通用增幅
+
+    # 物理/法术增幅
+    physical_amplification: float = 0.0  # 物理增幅
+    magic_amplification: float = 0.0  # 法术增幅
+
+    # 元素增幅
+    heat_amplification: float = 0.0  # 灼热增幅
+    electric_amplification: float = 0.0  # 电磁增幅
+    frost_amplification: float = 0.0  # 寒冷增幅
+    nature_amplification: float = 0.0  # 自然增幅
 
     # 特殊加成区(如连击)
     special_bonus: float = 0.0

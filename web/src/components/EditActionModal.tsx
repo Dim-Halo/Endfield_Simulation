@@ -25,6 +25,11 @@ export const EditActionModal: React.FC<EditActionModalProps> = ({ action, onSave
     onClose();
   };
 
+  const handleStartTimeChange = (value: string) => {
+    const numValue = Number(value);
+    setStartTime(numValue);
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-80 p-6 border border-gray-200 transform transition-all scale-100">
@@ -38,7 +43,7 @@ export const EditActionModal: React.FC<EditActionModalProps> = ({ action, onSave
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">动作名称</label>
-            <input 
+            <input
               value={name}
               onChange={e => setName(e.target.value)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
@@ -47,7 +52,7 @@ export const EditActionModal: React.FC<EditActionModalProps> = ({ action, onSave
 
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">类型</label>
-            <select 
+            <select
               value={type}
               onChange={e => setType(e.target.value as ActionType)}
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
@@ -62,18 +67,23 @@ export const EditActionModal: React.FC<EditActionModalProps> = ({ action, onSave
 
           <div className="grid grid-cols-2 gap-4">
              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">开始时间 (s)</label>
-                <input 
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  开始时间 (s)
+                </label>
+                <input
                   type="number"
                   step="0.1"
                   value={startTime}
-                  onChange={e => setStartTime(Number(e.target.value))}
+                  onChange={e => handleStartTimeChange(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
+                <p className="text-[10px] text-gray-400 mt-1">
+                  可自由设置间隔
+                </p>
              </div>
              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">持续时间 (s)</label>
-                <input 
+                <input
                   type="number"
                   step="0.1"
                   value={duration}
@@ -85,13 +95,13 @@ export const EditActionModal: React.FC<EditActionModalProps> = ({ action, onSave
         </div>
 
         <div className="flex gap-3 mt-8">
-           <button 
+           <button
              onClick={onDelete}
              className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
            >
              <Trash2 className="w-4 h-4" /> 删除
            </button>
-           <button 
+           <button
              onClick={handleSave}
              className="flex-1 bg-blue-600 text-white hover:bg-blue-700 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"
            >

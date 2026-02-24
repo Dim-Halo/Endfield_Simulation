@@ -153,7 +153,7 @@ class ConfigManager:
             level: 反应等级 (附着层数)
             tech_power: 源石技艺
             attacker_lvl: 攻击者等级
-            is_magic: 是否为法术伤害
+            is_magic: 是否为法术伤害/异常
         """
         base_mv = self.reaction_base_mv.get(reaction_type, 0)
         level_mult = base_mv * (1.0 + level)
@@ -161,12 +161,17 @@ class ConfigManager:
         # Tech增强
         tech_mult = 1.0 + (tech_power / 100.0)
 
-        # 法术等级增强
-        spell_level_mult = 1.0
+        # 等级系数区（物理异常和法术异常有不同的系数）
         if is_magic:
-            spell_level_mult = 1.0 + (5.0 / 980.0) * (max(1, attacker_lvl) - 1)
+            # 法术等级系数 = 1 + (触发者等级 - 1) / 196
+            # 适用于：法术异常和法术爆发伤害
+            level_coeff = 1.0 + (max(1, attacker_lvl) - 1) / 196.0
+        else:
+            # 物理等级系数 = 1 + (触发者等级 - 1) / 392
+            # 适用于：物理异常伤害
+            level_coeff = 1.0 + (max(1, attacker_lvl) - 1) / 392.0
 
-        return level_mult * tech_mult * spell_level_mult
+        return level_mult * tech_mult * level_coeff
 
     def get_tech_enhancement(self, tech_power: float) -> float:
         """

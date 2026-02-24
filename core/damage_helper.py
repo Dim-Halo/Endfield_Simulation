@@ -60,16 +60,16 @@ def deal_damage(engine: 'SimEngine', attacker: 'BaseActor', target: 'DummyEnemy'
     # 3. 获取防御方数据
     target_stats = target.get_defense_stats()
 
-    # 4. 计算基础伤害
-    total_mv = skill_mv + reaction_result.extra_mv
-    base_damage = DamageEngine.calculate(
-        attacker_stats, target_stats, total_mv, element, move_type
-    )
-
-    # 5. 判断是否暴击
+    # 4. 判断是否暴击（在计算伤害前判定）
     crit_rate = attacker_stats.get(StatKey.CRIT_RATE, 0.0)
     import random
     is_crit = random.random() < crit_rate
+
+    # 5. 计算伤害（传入暴击判定结果）
+    total_mv = skill_mv + reaction_result.extra_mv
+    base_damage = DamageEngine.calculate(
+        attacker_stats, target_stats, total_mv, element, move_type, is_crit=is_crit
+    )
 
     final_damage = base_damage
 
